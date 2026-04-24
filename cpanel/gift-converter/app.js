@@ -32,8 +32,21 @@ const elements = {
   jobsMeter: document.querySelector("#jobsMeter"),
   jobsMeterLabel: document.querySelector("#jobsMeterLabel"),
   queueBody: document.querySelector("#queueBody"),
-  dropZone: document.querySelector("#dropZone")
+  dropZone: document.querySelector("#dropZone"),
+  logPanel: document.querySelector("#logPanel")
 };
+
+function addLog(message, tone = "default") {
+  const item = document.createElement("div");
+  item.className = `log-entry${tone === "default" ? "" : ` log-entry-${tone}`}`;
+  const timestamp = new Date().toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+  item.innerHTML = `<div>${message}</div><div class="log-time">${timestamp}</div>`;
+  elements.logPanel.prepend(item);
+}
 
 function setStatus(text, tone = "ready") {
   elements.statusLine.textContent = text;
@@ -73,7 +86,7 @@ function updateSummary() {
   elements.progressCounter.textContent = `${completed} / ${total} completed`;
   elements.jobsMeterLabel.textContent = `${total} jobs`;
   const progress = total === 0 ? 0 : (completed / total) * 100;
-  elements.jobsMeter.style.setProperty("--progress", `${progress}%`);
+  elements.jobsMeter.style.setProperty("--completion-progress", `${progress}%`);
   elements.zipButton.disabled = completed === 0 || state.running;
 }
 
@@ -81,7 +94,7 @@ function renderQueue() {
   if (state.jobs.length === 0) {
     elements.queueBody.innerHTML = `
       <tr class="empty-row">
-        <td colspan="6">Drop videos here or use Add Videos.</td>
+        <td colspan="6">Drop videos here or use Start Import.</td>
       </tr>
     `;
     updateSummary();
@@ -105,7 +118,7 @@ function renderQueue() {
               </div>
             </div>
           </td>
-          <td><input class="row-fps" type="number" min="1" max="60" value="${job.fps}" data-fps="${job.id}" /></td>
+          <td><input class="row-fps-input" type="number" min="1" max="60" value="${job.fps}" data-fps="${job.id}" /></td>
           <td><span class="status-pill">${job.status}</span></td>
           <td>
             <div class="progress-wrap">
@@ -124,13 +137,17 @@ function renderQueue() {
 
 function getRenderSettings() {
   const mode = elements.renderModeSelect.value;
-  const map = {
-    clean: { dither: "sierra2_4a", colors: Number(elements.colorCountInput.value) || 96, stats: "diff" },
-    detail: { dither: "floyd_steinberg", colors: Math.max(96, Number(elements.colorCountInput.value) || 128), stats: "full" },
-    retro: { dither: "bayer", colors: Math.min(96, Number(elements.colorCountInput.value) || 48), stats: "single", bayerScale: 3 },
-    stable: { dither: "sierra2_4a", colors: Number(elements.colorCountInput.value) || 96, stats: "single" }
-  };
-  return map[mode] || map.clean;
+  const colors = Number(elements.colorCountInput.value) || 96;
+  if (mode === "detail") {
+    return { dither: "floyd_steinberg", colors: Math.max(96, colors), stats: "full" };
+  }
+  if (mode === "retro") {
+    return { dither: "bayer", colors: Math.min(96, colors), stats: "single", bayerScale: 3 };
+  }
+  if (mode === "stable") {
+    return { dither: "sierra2_4a", colors, stats: "single" };
+  }
+  return { dither: "sierra2_4a", colors, stats: "diff" };
 }
 
 function getScaleFilter() {
@@ -149,6 +166,7 @@ async function ensureFfmpeg() {
   }
 
   setStatus("Loading browser engine...", "warn");
+  addLog("Loading browser engine...");
   const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm";
   const ffmpeg = new FFmpeg();
   await ffmpeg.load({
@@ -157,6 +175,7 @@ async function ensureFfmpeg() {
   });
   state.ffmpeg = ffmpeg;
   state.ffmpegLoaded = true;
+  addLog("Browser engine is ready.", "success");
   return ffmpeg;
 }
 
@@ -169,6 +188,7 @@ async function convertJob(job, index, total) {
   const render = getRenderSettings();
   const scale = getScaleFilter();
 
+  addLog(`GIF generation started for ${job.file.name}. FPS: ${fps}`);
   job.status = "Converting";
   job.progress = 6;
   renderQueue();
@@ -179,7 +199,6 @@ async function convertJob(job, index, total) {
   });
 
   await ffmpeg.writeFile(inputName, await fetchFile(job.file));
-
   await ffmpeg.exec([
     "-i",
     inputName,
@@ -188,9 +207,10 @@ async function convertJob(job, index, total) {
     paletteName
   ]);
 
-  const paletteUse = render.dither === "bayer"
-    ? `paletteuse=dither=bayer:bayer_scale=${render.bayerScale || 3}`
-    : `paletteuse=dither=${render.dither}`;
+  const paletteUse =
+    render.dither === "bayer"
+      ? `paletteuse=dither=bayer:bayer_scale=${render.bayerScale || 3}`
+      : `paletteuse=dither=${render.dither}`;
 
   await ffmpeg.exec([
     "-i",
@@ -211,6 +231,7 @@ async function convertJob(job, index, total) {
   await ffmpeg.deleteFile(inputName);
   await ffmpeg.deleteFile(paletteName);
   await ffmpeg.deleteFile(outputName);
+  addLog(`${job.file.name} was converted to GIF successfully.`, "success");
   setStatus(`Converted ${index + 1}/${total}.`, "ready");
   renderQueue();
 }
@@ -228,6 +249,7 @@ async function exportAll() {
     const jobs = state.jobs.filter((job) => job.selected);
     if (jobs.length === 0) {
       setStatus("Select videos first.", "warn");
+      addLog("Select videos first.", "error");
       return;
     }
 
@@ -238,6 +260,7 @@ async function exportAll() {
   } catch (error) {
     console.error(error);
     setStatus("Browser conversion failed.", "error");
+    addLog(`Conversion error: ${error.message}`, "error");
   } finally {
     state.running = false;
     elements.exportButton.disabled = false;
@@ -249,6 +272,7 @@ async function downloadZip() {
   const ready = state.jobs.filter((job) => job.gifBlob);
   if (ready.length === 0) {
     setStatus("No GIFs are ready for ZIP.", "warn");
+    addLog("No GIFs are ready for ZIP.", "error");
     return;
   }
 
@@ -262,17 +286,20 @@ async function downloadZip() {
   link.click();
   URL.revokeObjectURL(url);
   setStatus("ZIP downloaded.", "ready");
+  addLog("ZIP download is ready.", "success");
 }
 
 function addFiles(fileList) {
   const fresh = Array.from(fileList).filter((file) => file.type.startsWith("video/"));
   if (fresh.length === 0) {
     setStatus("No supported videos found.", "warn");
+    addLog("No supported videos found.", "error");
     return;
   }
   state.jobs.push(...fresh.map(createJob));
   renderQueue();
   setStatus(`${fresh.length} videos added.`, "ready");
+  addLog(`${fresh.length} videos added.`, "success");
 }
 
 elements.pickButton.addEventListener("click", () => elements.fileInput.click());
@@ -283,18 +310,21 @@ elements.applyAllFpsButton.addEventListener("click", () => {
     job.fps = fps;
   });
   renderQueue();
+  addLog(`Applied FPS ${fps} to all videos.`);
 });
 elements.applySelectedFpsButton.addEventListener("click", () => {
   const fps = getDefaultFps();
   const selected = state.jobs.filter((job) => job.selected);
   if (selected.length === 0) {
     setStatus("Select videos first.", "warn");
+    addLog("Select videos first.", "error");
     return;
   }
   selected.forEach((job) => {
     job.fps = fps;
   });
   renderQueue();
+  addLog(`Applied FPS ${fps} to ${selected.length} selected videos.`);
 });
 elements.sizeModeSelect.addEventListener("change", updateSizeModeUi);
 elements.exportButton.addEventListener("click", exportAll);
@@ -309,6 +339,7 @@ elements.clearButton.addEventListener("click", () => {
   state.jobs = [];
   renderQueue();
   setStatus("List cleared.", "ready");
+  addLog("List cleared.");
 });
 elements.queueBody.addEventListener("change", (event) => {
   const selectTarget = event.target.closest("[data-select]");
@@ -343,3 +374,4 @@ elements.dropZone.addEventListener("drop", (event) => {
 
 updateSizeModeUi();
 renderQueue();
+addLog("Web app is ready.");
