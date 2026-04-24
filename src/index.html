@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>gift-converter</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="desktop-shell">
+        <aside class="left-panel">
+          <section class="panel-section primary-section import-section">
+            <button id="startButton" class="primary-button">Start Import</button>
+            <p id="statusMessage" class="status-line status-heading">Ready.</p>
+          </section>
+
+        <section class="panel-section">
+          <div class="section-title">FPS</div>
+          <label>
+            FPS to apply
+            <input id="bulkFpsInput" type="number" min="1" max="60" value="15" />
+          </label>
+          <div class="stack-actions">
+            <button id="applyAllFpsButton" class="dark-button wide-button" type="button">Apply to All</button>
+            <button id="applySelectedFpsButton" class="wide-button" type="button">Apply to Selected</button>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-title">Quality</div>
+          <div class="two-col-grid">
+            <label>
+              Color count
+              <input id="colorsInput" type="number" min="16" max="256" value="96" />
+            </label>
+              <label>
+                <span class="setting-label-row">
+                  <span>Render mode</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="renderMode">i</button>
+                </span>
+                <select id="renderProfileSelect">
+                  <option value="clean" selected>Clean</option>
+                  <option value="detail">Detail</option>
+                  <option value="retro">Retro</option>
+                <option value="stable">Stable</option>
+                <option value="experimental">Experimental</option>
+              </select>
+            </label>
+              <label>
+                Width mode
+                <select id="scaleModeSelect">
+                  <option value="custom">Custom</option>
+                  <option value="original" selected>Original</option>
+                </select>
+              </label>
+              <label>
+                <span id="sizePrimaryLabel">Width (px)</span>
+                <input id="widthInput" type="number" min="120" max="1920" value="480" />
+              </label>
+              <label id="heightField">
+                <span id="sizeSecondaryLabel">Height (px)</span>
+                <input id="heightInput" type="number" min="120" max="1920" value="480" />
+              </label>
+            </div>
+          <div id="experimentalPanel" class="experimental-panel hidden">
+            <div class="experimental-head">
+              <div class="experimental-title">Experimental</div>
+            </div>
+            <div class="two-col-grid">
+              <label>
+                <span class="setting-label-row">
+                  <span>Base algorithm</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="baseAlgorithm">i</button>
+                </span>
+                <select id="experimentalDitherSelect">
+                  <option value="sierra2_4a" selected>Sierra 2-4A</option>
+                  <option value="floyd_steinberg">Floyd-Steinberg</option>
+                  <option value="bayer">Bayer</option>
+                  <option value="adaptive">Adaptive</option>
+                </select>
+              </label>
+              <label>
+                <span class="setting-label-row">
+                  <span>Palette mode</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="paletteMode">i</button>
+                </span>
+                <select id="experimentalStatsModeSelect">
+                  <option value="diff" selected>Diff</option>
+                  <option value="full">Full</option>
+                  <option value="single">Single</option>
+                </select>
+              </label>
+              <label>
+                <span class="setting-label-row">
+                  <span>Motion handling</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="motionHandling">i</button>
+                </span>
+                <select id="experimentalDiffModeSelect">
+                  <option value="none" selected>Dynamic</option>
+                  <option value="rectangle">Stable</option>
+                </select>
+              </label>
+
+              <label id="experimentalBayerMatrixWrap">
+                <span class="setting-label-row">
+                  <span>Bayer matrix</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="bayerMatrix">i</button>
+                </span>
+                <select id="experimentalBayerMatrixSelect">
+                  <option value="2x2">2x2</option>
+                  <option value="4x4" selected>4x4</option>
+                  <option value="8x8">8x8</option>
+                </select>
+              </label>
+
+              <label>
+                <span class="setting-label-row">
+                  <span>Dither strength</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="ditherStrength">i</button>
+                </span>
+                <span class="range-control">
+                  <input id="experimentalDitherStrengthInput" type="range" min="0" max="100" value="50" />
+                  <span id="experimentalDitherStrengthValue" class="range-value">50</span>
+                </span>
+              </label>
+
+              <label>
+                <span class="setting-label-row">
+                  <span>Noise protect</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="noiseProtect">i</button>
+                </span>
+                <span class="range-control">
+                  <input id="experimentalNoiseProtectInput" type="range" min="0" max="100" value="0" />
+                  <span id="experimentalNoiseProtectValue" class="range-value">0</span>
+                </span>
+              </label>
+
+              <label>
+                <span class="setting-label-row">
+                  <span>Flat area protect</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="flatAreaProtect">i</button>
+                </span>
+                <span class="range-control">
+                  <input id="experimentalFlatProtectInput" type="range" min="0" max="100" value="0" />
+                  <span id="experimentalFlatProtectValue" class="range-value">0</span>
+                </span>
+              </label>
+
+              <label>
+                <span class="setting-label-row">
+                  <span>Edge bias</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="edgeBias">i</button>
+                </span>
+                <span class="range-control">
+                  <input id="experimentalEdgeBiasInput" type="range" min="0" max="100" value="0" />
+                  <span id="experimentalEdgeBiasValue" class="range-value">0</span>
+                </span>
+              </label>
+
+              <label>
+                <span class="setting-label-row">
+                  <span>Temporal stable</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="temporalStable">i</button>
+                </span>
+                <select id="experimentalTemporalStableSelect">
+                  <option value="off" selected>Off</option>
+                  <option value="on">On</option>
+                </select>
+              </label>
+
+              <label>
+                <span class="setting-label-row">
+                  <span>Retro CRT Bayer</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="retroCrt">i</button>
+                </span>
+                <select id="experimentalRetroCrtSelect">
+                  <option value="off" selected>Off</option>
+                  <option value="on">On</option>
+                </select>
+              </label>
+
+              <label>
+                <span class="setting-label-row">
+                  <span>Posterize + Dither</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="posterizeDither">i</button>
+                </span>
+                <span class="range-control">
+                  <input id="experimentalPosterizeInput" type="range" min="0" max="8" value="0" />
+                  <span id="experimentalPosterizeValue" class="range-value">0</span>
+                </span>
+              </label>
+
+              <label>
+                <span class="setting-label-row">
+                  <span>Adaptive dither</span>
+                  <button class="info-dot-button preview-info-button" type="button" data-preview-key="adaptiveDither">i</button>
+                </span>
+                <select id="experimentalAdaptiveSelect">
+                  <option value="off" selected>Off</option>
+                  <option value="on">On</option>
+                </select>
+              </label>
+            </div>
+            <div class="experimental-actions">
+              <button id="applySelectedQualityButton" class="wide-button" type="button">Apply to Selected</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-title">Output</div>
+          <button id="pickOutputButton" class="wide-button" type="button">Choose Output Folder</button>
+          <p id="outputPathLabel" class="path-label"></p>
+          <button id="goToOutputLink" class="text-link-button" type="button" disabled>Go to Output Folder</button>
+          <label class="check-row">
+            <input id="overwriteCheckbox" type="checkbox" />
+            <span>Overwrite existing GIF files</span>
+          </label>
+          <div class="stack-actions">
+            <button id="runExportButton" class="dark-button wide-button" type="button">Optimize &amp; Export</button>
+            <button id="saveZipButton" class="wide-button" type="button" disabled>Save ZIP File</button>
+            <button id="optimizeZipButton" class="wide-button progress-action-button hidden" type="button">
+              <span class="progress-action-label">Optimize ZIP</span>
+            </button>
+          </div>
+        </section>
+          <div class="brand-footer">
+            <button id="brandLinkButton" class="brand-link-button" type="button" aria-label="Open ycswu.co">
+              <svg class="brand-mark" xmlns="http://www.w3.org/2000/svg" width="295.804" height="322.82" viewBox="0 0 295.804 322.82" aria-hidden="true">
+                <g>
+                  <polygon points="295.804 21.527 295.804 35.867 288.582 35.867 288.582 86.091 281.378 86.091 281.378 129.128 288.582 129.128 288.582 164.995 281.378 164.995 281.378 193.692 288.582 193.692 288.582 208.032 281.378 208.032 281.378 229.559 274.157 229.559 274.157 243.899 266.935 243.899 266.935 251.086 259.731 251.086 259.731 258.256 252.509 258.256 252.509 265.426 245.288 265.426 245.288 272.596 230.862 272.596 230.862 286.953 223.658 286.953 223.658 294.123 187.585 294.123 187.585 301.293 173.143 301.293 173.143 308.463 151.513 308.463 151.513 315.65 122.644 315.65 122.644 322.82 93.793 322.82 93.793 315.65 86.571 315.65 86.571 294.123 100.997 294.123 100.997 286.953 57.72 286.953 57.72 294.123 7.204 294.123 7.204 286.953 0 286.953 0 265.426 28.851 265.426 28.851 258.256 36.073 258.256 36.073 243.899 43.277 243.899 43.277 236.729 50.499 236.729 50.499 229.559 64.924 229.559 64.924 222.389 72.146 222.389 72.146 215.219 79.35 215.219 79.35 208.032 86.571 208.032 86.571 200.862 93.793 200.862 93.793 193.692 100.997 193.692 100.997 179.335 108.218 179.335 108.218 172.165 115.44 172.165 115.44 164.995 122.644 164.995 122.644 150.655 129.865 150.655 129.865 143.468 137.07 143.468 137.07 129.128 151.513 129.128 151.513 121.958 158.717 121.958 158.717 114.771 165.938 114.771 165.938 107.601 173.143 107.601 173.143 93.261 180.364 93.261 180.364 78.904 187.585 78.904 187.585 50.224 180.364 50.224 180.364 43.037 173.143 43.037 173.143 21.527 194.79 21.527 194.79 14.34 209.215 14.34 209.215 7.17 223.658 7.17 223.658 0 245.288 0 245.288 7.17 266.935 7.17 266.935 14.34 288.582 14.34 288.582 21.527 295.804 21.527" fill="#e31b23"/>
+                </g>
+              </svg>
+              <span class="brand-link-copy">ycswu.co</span>
+            </button>
+          </div>
+        </aside>
+
+      <main class="right-panel">
+        <section id="dropZone" class="workspace-board">
+          <div class="board-topline">
+              <div class="board-actions board-actions-left">
+                <button id="selectAllButton" class="board-select-button" type="button">Select All</button>
+                <button id="clearQueueButton" class="board-clear-button" type="button">Clear List</button>
+                <div class="progress-counter" id="progressCounter">0 / 0 completed</div>
+                <div class="summary-box" id="summaryChip">
+                  <span class="summary-box-label" id="summaryChipLabel">0 jobs</span>
+                  <span class="summary-box-fill" aria-hidden="true"></span>
+                </div>
+              </div>
+              <div class="board-actions board-actions-right">
+                <button id="topResumeButton" class="board-stop-button" type="button" disabled>Continue</button>
+                <button id="topStopButton" class="board-stop-button" type="button" disabled>Stop</button>
+              </div>
+          </div>
+
+          <div class="board-scroll">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Select</th>
+                    <th>File</th>
+                    <th>FPS</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Output</th>
+                  </tr>
+                </thead>
+                <tbody id="queueTableBody">
+                  <tr class="empty-row">
+                    <td colspan="6"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <section id="logShell" class="log-overlay" aria-live="polite">
+      <div class="log-head">
+        <span class="log-title">Log</span>
+        <button id="logCloseButton" class="log-close-button" type="button" aria-label="Close log">X</button>
+      </div>
+      <div id="logPanel" class="log-body"></div>
+      <div id="logResizeHandle" class="log-resize-handle" aria-hidden="true"></div>
+    </section>
+    <button id="logDockButton" class="log-dock-button hidden" type="button">Log</button>
+
+    <div id="zipPrompt" class="modal-shell hidden" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <div id="confirmPromptTitle" class="modal-title">Save</div>
+        <h2 id="confirmPromptHeading">Save a ZIP copy too?</h2>
+        <div class="modal-actions">
+          <button id="zipYesButton" class="dark-button">Yes</button>
+          <button id="zipNoButton">No</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="optimizePrompt" class="modal-shell hidden" role="dialog" aria-modal="true">
+      <div class="modal-card optimize-card">
+        <div class="modal-head">
+          <div class="modal-title">Optimize</div>
+          <button id="optimizeCloseButton" class="modal-close-button" type="button" aria-label="Close">X</button>
+        </div>
+        <h2>Would you like to optimize the GIFs?</h2>
+        <div class="optimize-toolbar">
+          <label class="check-row compact-check">
+            <input id="optimizeSelectAll" type="checkbox" />
+            <span>Select All</span>
+          </label>
+          <label class="optimize-percent">
+            <span class="optimize-percent-label">
+              <span>Keep quality %</span>
+              <button id="optimizePreviewInfoButton" class="info-dot-button" type="button" aria-label="Preview quality">i</button>
+            </span>
+            <input id="optimizePercentInput" type="number" min="0" max="100" value="80" />
+          </label>
+        </div>
+        <div class="optimize-list" id="optimizeList"></div>
+        <div class="modal-actions">
+          <button id="optimizeRunButton" class="dark-button">Optimize Selected</button>
+          <button id="optimizeContinueButton">Skip Optimization</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="donePrompt" class="modal-shell hidden" role="dialog" aria-modal="true">
+      <div class="modal-card">
+        <div class="modal-title">Completed</div>
+        <h2>Saved</h2>
+        <div class="modal-actions">
+          <button id="doneOkButton" class="dark-button">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="qualityPreviewBubble" class="quality-preview-bubble hidden" aria-hidden="true">
+      <div class="quality-preview-head">
+        <div id="qualityPreviewTitle" class="quality-preview-title">Preview</div>
+        <div id="qualityPreviewCopy" class="quality-preview-copy"></div>
+      </div>
+      <div class="quality-preview-grid">
+        <div class="quality-preview-card">
+          <div id="qualityPreviewOriginalLabel" class="quality-preview-tag">100</div>
+          <div class="quality-preview-frame">
+            <video
+              id="qualityPreviewOriginalVideo"
+              class="quality-preview-video"
+              muted
+              autoplay
+              loop
+              playsinline
+              preload="metadata"
+            ></video>
+          </div>
+        </div>
+        <div class="quality-preview-card">
+          <div id="qualityPreviewAdjustedLabel" class="quality-preview-tag">80</div>
+          <div
+            id="qualityPreviewAdjustedFrame"
+            class="quality-preview-frame quality-preview-adjusted"
+            data-strength="20"
+          >
+            <video
+              id="qualityPreviewAdjustedVideo"
+              class="quality-preview-video"
+              muted
+              autoplay
+              loop
+              playsinline
+              preload="metadata"
+            ></video>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
