@@ -5,7 +5,8 @@
   "description": "Desktop bulk video to GIF converter app",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist:win": "electron-builder --win portable"
   },
   "keywords": [
     "electron",
@@ -15,8 +16,37 @@
   ],
   "author": "",
   "license": "MIT",
+  "build": {
+    "appId": "co.ycswu.giftconverter",
+    "productName": "gift-converter",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json",
+      "package-lock.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "artifactName": "gift-converter-${version}.${ext}",
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  },
   "dependencies": {
-    "electron": "^37.0.0",
     "ffmpeg-static": "^5.2.0"
+  },
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-packager": "^17.1.2"
   }
 }

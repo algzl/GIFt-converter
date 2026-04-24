@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>gift-converter</title>
+    <meta
+      name="description"
+      content="Browser-based batch video to GIF converter with per-file FPS, render modes, and ZIP download."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="panel import-panel">
+          <button id="pickButton" class="dark-button" type="button">Add Videos</button>
+          <input id="fileInput" type="file" accept="video/*" multiple hidden />
+          <div id="statusLine" class="status-line">Ready.</div>
+        </div>
+
+        <section class="panel">
+          <div class="section-title">FPS</div>
+          <label>
+            FPS to apply
+            <input id="bulkFpsInput" type="number" min="1" max="60" value="15" />
+          </label>
+          <div class="stack-actions">
+            <button id="applyAllFpsButton" class="dark-button" type="button">Apply to All</button>
+            <button id="applySelectedFpsButton" type="button">Apply to Selected</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-title">Render</div>
+          <label>
+            Render mode
+            <select id="renderModeSelect">
+              <option value="clean">Clean</option>
+              <option value="detail">Detail</option>
+              <option value="retro">Retro</option>
+              <option value="stable">Stable</option>
+            </select>
+          </label>
+          <label>
+            Color count
+            <input id="colorCountInput" type="number" min="16" max="256" value="96" />
+          </label>
+          <label>
+            Width mode
+            <select id="sizeModeSelect">
+              <option value="long-edge" selected>Original</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label>
+            <span id="primarySizeLabel">Long edge (px)</span>
+            <input id="widthInput" type="number" min="64" max="1920" value="640" />
+          </label>
+          <label id="heightField" class="field-disabled">
+            <span id="secondarySizeLabel">Height (auto)</span>
+            <input id="heightInput" type="number" min="64" max="1920" value="480" disabled />
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="section-title">Export</div>
+          <div class="stack-actions">
+            <button id="exportButton" class="dark-button" type="button">Export GIFs</button>
+            <button id="zipButton" type="button" disabled>Download ZIP</button>
+          </div>
+        </section>
+
+        <div class="brand-zone">
+          <div class="brand-stack">
+            <svg class="bear-mark" xmlns="http://www.w3.org/2000/svg" width="295.804" height="322.82" viewBox="0 0 295.804 322.82" aria-hidden="true">
+              <g>
+                <polygon points="295.804 21.527 295.804 35.867 288.582 35.867 288.582 86.091 281.378 86.091 281.378 129.128 288.582 129.128 288.582 164.995 281.378 164.995 281.378 193.692 288.582 193.692 288.582 208.032 281.378 208.032 281.378 229.559 274.157 229.559 274.157 243.899 266.935 243.899 266.935 251.086 259.731 251.086 259.731 258.256 252.509 258.256 252.509 265.426 245.288 265.426 245.288 272.596 230.862 272.596 230.862 286.953 223.658 286.953 223.658 294.123 187.585 294.123 187.585 301.293 173.143 301.293 173.143 308.463 151.513 308.463 151.513 315.65 122.644 315.65 122.644 322.82 93.793 322.82 93.793 315.65 86.571 315.65 86.571 294.123 100.997 294.123 100.997 286.953 57.72 286.953 57.72 294.123 7.204 294.123 7.204 286.953 0 286.953 0 265.426 28.851 265.426 28.851 258.256 36.073 258.256 36.073 243.899 43.277 243.899 43.277 236.729 50.499 236.729 50.499 229.559 64.924 229.559 64.924 222.389 72.146 222.389 72.146 215.219 79.35 215.219 79.35 208.032 86.571 208.032 86.571 200.862 93.793 200.862 93.793 193.692 100.997 193.692 100.997 179.335 108.218 179.335 108.218 172.165 115.44 172.165 115.44 164.995 122.644 164.995 122.644 150.655 129.865 150.655 129.865 143.468 137.07 143.468 137.07 129.128 151.513 129.128 151.513 121.958 158.717 121.958 158.717 114.771 165.938 114.771 165.938 107.601 173.143 107.601 173.143 93.261 180.364 93.261 180.364 78.904 187.585 78.904 187.585 50.224 180.364 50.224 180.364 43.037 173.143 43.037 173.143 21.527 194.79 21.527 194.79 14.34 209.215 14.34 209.215 7.17 223.658 7.17 223.658 0 245.288 0 245.288 7.17 266.935 7.17 266.935 14.34 288.582 14.34 288.582 21.527 295.804 21.527" fill="#e31b23" />
+              </g>
+            </svg>
+            <a class="desktop-link" href="https://github.com/algzl/GIFt-converter/releases" target="_blank" rel="noreferrer">
+              <svg class="github-mark" viewBox="0 0 16 16" aria-hidden="true">
+                <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.55 7.55 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
+              </svg>
+              <span>Win app</span>
+            </a>
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <div id="dropZone" class="top-strip">
+          <div class="top-actions">
+            <button id="selectAllButton" class="dark-button" type="button">Select All</button>
+            <button id="clearButton" type="button">Clear List</button>
+            <div id="progressCounter" class="counter">0 / 0 completed</div>
+            <div id="jobsMeter" class="jobs-meter"><span id="jobsMeterLabel">0 jobs</span></div>
+          </div>
+        </div>
+
+        <div class="table-shell">
+          <table>
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>File</th>
+                <th>FPS</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Output</th>
+              </tr>
+            </thead>
+            <tbody id="queueBody">
+              <tr class="empty-row">
+                <td colspan="6">Drop videos here or use Add Videos.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

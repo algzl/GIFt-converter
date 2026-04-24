@@ -9,3 +9,5 @@ release/*.msi
 release/*.dmg
 release/*.AppImage
 release/*.zip
+release/builder-debug.yml
+release/win-unpacked/
