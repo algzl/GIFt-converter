@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("converterApi", {
   commitOptimizedGifs: (drafts) => ipcRenderer.invoke("commit-optimized-gifs", drafts),
   discardOptimizedGifs: (drafts) => ipcRenderer.invoke("discard-optimized-gifs", drafts),
   saveZipArchive: (payload) => ipcRenderer.invoke("save-zip-archive", payload),
+  saveGifFileAs: (payload) => ipcRenderer.invoke("save-gif-file-as", payload),
   convertBatch: (payload) => ipcRenderer.invoke("convert-batch", payload),
   cancelBatch: (jobs) => ipcRenderer.invoke("cancel-batch", jobs),
   openPath: (targetPath) => ipcRenderer.invoke("open-path", targetPath),

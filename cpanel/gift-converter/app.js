@@ -168,10 +168,21 @@ async function ensureFfmpeg() {
   setStatus("Loading browser engine...", "warn");
   addLog("Loading browser engine...");
   const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm";
+  const packageURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm";
   const ffmpeg = new FFmpeg();
+  const [coreURL, wasmURL, workerURL] = await Promise.all([
+    toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+    toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+    toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, "text/javascript")
+  ]);
+  const classWorkerURL = URL.createObjectURL(
+    new Blob([`import "${packageURL}/worker.js";`], { type: "text/javascript" })
+  );
   await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm")
+    coreURL,
+    wasmURL,
+    workerURL,
+    classWorkerURL
   });
   state.ffmpeg = ffmpeg;
   state.ffmpegLoaded = true;

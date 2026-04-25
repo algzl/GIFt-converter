@@ -213,6 +213,36 @@ async function pickZipDestination(outputDir) {
   return result.filePath;
 }
 
+async function saveGifFileAs({ sourcePath, suggestedName, outputDir } = {}) {
+  const defaultName = suggestedName || path.basename(sourcePath || "export.gif");
+  const defaultPath = path.join(outputDir || app.getPath("documents"), defaultName);
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: "Save GIF File",
+    defaultPath,
+    filters: [
+      {
+        name: "GIF",
+        extensions: ["gif"]
+      }
+    ]
+  });
+
+  if (result.canceled || !result.filePath) {
+    return { cancelled: true };
+  }
+
+  const sourceResolved = path.resolve(sourcePath);
+  const destinationResolved = path.resolve(result.filePath);
+  if (sourceResolved !== destinationResolved) {
+    fs.copyFileSync(sourceResolved, destinationResolved);
+  }
+
+  return {
+    cancelled: false,
+    filePath: destinationResolved
+  };
+}
+
 function normalizeDropPaths(inputPaths = []) {
   const files = [];
 
@@ -771,6 +801,7 @@ ipcMain.handle("save-zip-archive", async (_event, payload) => {
     zipPath: createdZip
   };
 });
+ipcMain.handle("save-gif-file-as", async (_event, payload) => saveGifFileAs(payload));
 
 ipcMain.handle("open-path", async (_event, targetPath) => {
   if (!targetPath) {

@@ -274,6 +274,11 @@ function getCompletedGifJobs() {
   return state.jobs.filter((job) => job.status === "done" && job.outputPath);
 }
 
+function getSingleCompletedJob() {
+  const completedJobs = getCompletedGifJobs();
+  return completedJobs.length === 1 ? completedJobs[0] : null;
+}
+
 function setOptimizeZipProgress(value) {
   state.optimizeZipProgress = Math.max(0, Math.min(100, value));
   elements.optimizeZipButton.style.setProperty(
@@ -284,15 +289,23 @@ function setOptimizeZipProgress(value) {
 
 function updateOptimizeZipButton() {
   const completedJobs = getCompletedGifJobs();
+  const singleCompletedJob = completedJobs.length === 1 ? completedJobs[0] : null;
   const hasPendingOptimize = completedJobs.some((job) => !job.optimizedOnce);
   const shouldShow = state.optimizeZipVisible && completedJobs.length > 0;
   elements.optimizeZipButton.classList.toggle("hidden", !shouldShow);
   elements.optimizeZipButton.disabled =
-    !shouldShow || state.running || state.optimizeZipBusy || !hasPendingOptimize;
+    !shouldShow ||
+    state.running ||
+    state.optimizeZipBusy ||
+    (!singleCompletedJob && !hasPendingOptimize);
   elements.optimizeZipButton.classList.toggle("is-busy", state.optimizeZipBusy);
   elements.optimizeZipButton.querySelector(".progress-action-label").textContent = state.optimizeZipBusy
-    ? "Optimizing ZIP"
-    : "Optimize ZIP";
+    ? singleCompletedJob
+      ? "Optimizing GIF"
+      : "Optimizing ZIP"
+    : singleCompletedJob
+      ? "Optimize GIF"
+      : "Optimize ZIP";
   if (!state.optimizeZipBusy && !shouldShow) {
     setOptimizeZipProgress(0);
   }
@@ -646,6 +659,7 @@ function updateSummary() {
   const totalCount = state.jobs.length;
   const progressPercent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
   const completedJobs = getCompletedGifJobs();
+  const singleCompletedJob = completedJobs.length === 1 ? completedJobs[0] : null;
   if (elements.queueCount) {
     elements.queueCount.textContent =
       totalCount === 0
@@ -656,9 +670,8 @@ function updateSummary() {
   elements.progressCounter.textContent = `${doneCount} / ${totalCount} completed`;
   elements.summaryChip.style.setProperty("--completion-progress", `${progressPercent}%`);
   elements.summaryChip.classList.toggle("is-running", state.running && doneCount < totalCount);
-  const readyForZip =
-    completedJobs.length > 0 && completedJobs.every((job) => job.optimizedOnce);
-  elements.saveZipButton.disabled = !readyForZip;
+  elements.saveZipButton.textContent = singleCompletedJob ? "Save GIF File" : "Save ZIP File";
+  elements.saveZipButton.disabled = completedJobs.length === 0 || state.running || state.optimizeZipBusy;
   updateOptimizeZipButton();
 }
 
@@ -1005,7 +1018,45 @@ async function saveZipForCompletedJobs() {
   }
 }
 
-async function optimizeGifFiles(filePaths, qualityPercent) {
+async function saveGifFileFromPath(sourcePath, suggestedName) {
+  try {
+    const saveResult = await window.converterApi.saveGifFileAs({
+      sourcePath,
+      suggestedName,
+      outputDir: state.outputDir
+    });
+
+    if (saveResult.cancelled) {
+      updateStatus("GIF save was cancelled.", "warn");
+      addLog("GIF save step was cancelled.");
+      return null;
+    }
+
+    updateStatus("GIF file is ready.", "ready");
+    addLog(`GIF saved: ${saveResult.filePath}`);
+    window.converterApi.openPath(saveResult.filePath);
+    return saveResult.filePath;
+  } catch (error) {
+    updateStatus("An error occurred while saving the GIF.", "error");
+    addLog(`GIF save error: ${error.message}`);
+    return null;
+  }
+}
+
+async function saveCompletedGifFile() {
+  const singleCompletedJob = getSingleCompletedJob();
+  if (!singleCompletedJob) {
+    updateStatus("A single GIF is not ready to save.", "warn");
+    return null;
+  }
+
+  return saveGifFileFromPath(
+    singleCompletedJob.outputPath,
+    singleCompletedJob.outputPath.split(/[/\\]/).pop()
+  );
+}
+
+async function stageOptimizedGifFiles(filePaths, qualityPercent) {
   updateStatus(`Optimizing ${filePaths.length} GIFs...`, "ready");
   updateCompletionHint("A dialog will open when optimization is complete.");
   addLog(`Optimization started for ${filePaths.length} GIFs at ${qualityPercent}% quality.`);
@@ -1015,6 +1066,23 @@ async function optimizeGifFiles(filePaths, qualityPercent) {
     qualityPercent
   });
   state.optimizationDrafts = optimizedEntries;
+  return optimizedEntries;
+}
+
+async function discardOptimizationDrafts() {
+  if (state.optimizationDrafts.length === 0) {
+    return;
+  }
+
+  await window.converterApi.discardOptimizedGifs(state.optimizationDrafts);
+  state.optimizationDrafts = [];
+}
+
+async function commitOptimizationDrafts() {
+  if (state.optimizationDrafts.length === 0) {
+    return [];
+  }
+
   const committedEntries = await window.converterApi.commitOptimizedGifs(state.optimizationDrafts);
   state.optimizationDrafts = [];
   const committedMap = new Map(committedEntries.map((item) => [item.filePath, item]));
@@ -1037,6 +1105,57 @@ async function optimizeGifFiles(filePaths, qualityPercent) {
 }
 
 async function optimizeZipAndDownload() {
+  const singleCompletedJob = getSingleCompletedJob();
+  if (singleCompletedJob) {
+    state.optimizeZipBusy = true;
+    startOptimizeZipProgress();
+    updateOptimizeZipButton();
+
+    try {
+      state.lastOptimizeQuality = Math.max(
+        10,
+        Math.min(100, Number(elements.optimizePercentInput.value) || state.lastOptimizeQuality || 80)
+      );
+      const drafts = await stageOptimizedGifFiles(
+        [singleCompletedJob.outputPath],
+        state.lastOptimizeQuality
+      );
+      stopOptimizeZipProgress(true);
+      const wantsSave = await askConfirmPrompt({
+        title: "Save",
+        heading: "Save?",
+        copy: ""
+      });
+
+      if (wantsSave && drafts[0]) {
+        const savedPath = await saveGifFileFromPath(
+          drafts[0].tempPath,
+          singleCompletedJob.outputPath.split(/[/\\]/).pop()
+        );
+        if (savedPath) {
+          singleCompletedJob.optimizedOnce = true;
+        }
+      } else {
+        addLog("Optimized GIF save was skipped.");
+      }
+
+      await discardOptimizationDrafts();
+      state.optimizeZipVisible = true;
+      renderQueue();
+      return;
+    } catch (error) {
+      await discardOptimizationDrafts();
+      updateStatus("GIF optimization failed.", "error");
+      updateCompletionHint("Optimization failed. Review the log and try again.");
+      addLog(`Optimization error: ${error.message}`);
+      stopOptimizeZipProgress(false);
+    } finally {
+      state.optimizeZipBusy = false;
+      updateOptimizeZipButton();
+    }
+    return;
+  }
+
   const pendingFiles = getCompletedGifJobs()
     .filter((job) => !job.optimizedOnce)
     .map((job) => job.outputPath);
@@ -1051,16 +1170,14 @@ async function optimizeZipAndDownload() {
   updateOptimizeZipButton();
 
   try {
-    await optimizeGifFiles(pendingFiles, state.lastOptimizeQuality);
+    await stageOptimizedGifFiles(pendingFiles, state.lastOptimizeQuality);
+    await commitOptimizationDrafts();
     stopOptimizeZipProgress(true);
     state.optimizeZipVisible = false;
     updateOptimizeZipButton();
     await saveZipForCompletedJobs();
   } catch (error) {
-    if (state.optimizationDrafts.length > 0) {
-      await window.converterApi.discardOptimizedGifs(state.optimizationDrafts);
-      state.optimizationDrafts = [];
-    }
+    await discardOptimizationDrafts();
     updateStatus("GIF optimization failed.", "error");
     updateCompletionHint("Optimization failed. Review the log and try again.");
     addLog(`Optimization error: ${error.message}`);
@@ -1069,6 +1186,15 @@ async function optimizeZipAndDownload() {
     state.optimizeZipBusy = false;
     updateOptimizeZipButton();
   }
+}
+
+async function saveCompletedOutputs() {
+  if (getSingleCompletedJob()) {
+    await saveCompletedGifFile();
+    return;
+  }
+
+  await saveZipForCompletedJobs();
 }
 
 function getBulkFps() {
@@ -1278,37 +1404,14 @@ async function runConversion(resumeMode) {
   if (gifFiles.length > 0) {
     const fileEntries = await window.converterApi.getFileEntries(gifFiles);
     const optimizeAction = await showOptimizePrompt(fileEntries);
-    if (optimizeAction === "optimized") {
-      await saveZipForCompletedJobs();
+    if (
+      optimizeAction === "optimized-saved" ||
+      optimizeAction === "optimized-discarded" ||
+      optimizeAction === "continue"
+    ) {
       updateCompletionHint("");
       return;
     }
-
-    if (optimizeAction === "continue") {
-      const wantsZip = await askConfirmPrompt({
-        title: "ZIP",
-        heading: "Save ZIP?",
-        copy: ""
-      });
-      if (wantsZip) {
-        await saveZipForCompletedJobs();
-      } else {
-        addLog("ZIP save was skipped.");
-      }
-      updateCompletionHint("");
-      return;
-    }
-
-    if (optimizeAction === "optimized-discarded") {
-      updateCompletionHint("");
-      return;
-    }
-
-      if (optimizeAction === "zip") {
-        await saveZipForCompletedJobs();
-        updateCompletionHint("");
-        return;
-      }
   }
 }
 
@@ -1329,7 +1432,7 @@ elements.goToOutputLink.addEventListener("click", () => {
     window.converterApi.openPath(state.outputDir);
   }
 });
-elements.saveZipButton.addEventListener("click", saveZipForCompletedJobs);
+elements.saveZipButton.addEventListener("click", saveCompletedOutputs);
 elements.optimizeZipButton.addEventListener("click", optimizeZipAndDownload);
 elements.clearQueueButton.addEventListener("click", () => {
   if (state.running) {
@@ -1584,13 +1687,58 @@ elements.optimizeRunButton.addEventListener("click", async () => {
   );
   state.lastOptimizeQuality = qualityPercent;
   try {
-    await optimizeGifFiles(selectedFiles, qualityPercent);
-    closeOptimizePrompt("optimized");
-  } catch (error) {
-    if (state.optimizationDrafts.length > 0) {
-      await window.converterApi.discardOptimizedGifs(state.optimizationDrafts);
-      state.optimizationDrafts = [];
+    const drafts = await stageOptimizedGifFiles(selectedFiles, qualityPercent);
+
+    if (selectedFiles.length === 1) {
+      const wantsSave = await askConfirmPrompt({
+        title: "Save",
+        heading: "Save?",
+        copy: ""
+      });
+
+      if (wantsSave && drafts[0]) {
+        const savedPath = await saveGifFileFromPath(
+          drafts[0].tempPath,
+          state.optimizeFiles.find((item) => item.filePath === selectedFiles[0])?.fileName ||
+            drafts[0].fileName
+        );
+
+        if (savedPath) {
+          state.jobs = state.jobs.map((job) =>
+            job.outputPath === selectedFiles[0] ? { ...job, optimizedOnce: true } : job
+          );
+          renderQueue();
+          closeOptimizePrompt("optimized-saved");
+        } else {
+          closeOptimizePrompt("optimized-discarded");
+        }
+      } else {
+        addLog("Optimized GIF save was skipped.");
+        closeOptimizePrompt("optimized-discarded");
+      }
+
+      await discardOptimizationDrafts();
+      return;
     }
+
+    const wantsZip = await askConfirmPrompt({
+      title: "Save",
+      heading: "Save ZIP?",
+      copy: ""
+    });
+
+    if (wantsZip) {
+      await commitOptimizationDrafts();
+      await saveZipForCompletedJobs();
+      closeOptimizePrompt("optimized-saved");
+      return;
+    }
+
+    addLog("Optimized ZIP save was skipped.");
+    await discardOptimizationDrafts();
+    closeOptimizePrompt("optimized-discarded");
+  } catch (error) {
+    await discardOptimizationDrafts();
     updateStatus("GIF optimization failed.", "error");
     updateCompletionHint("Optimization failed. Review the log and try again.");
     addLog(`Optimization error: ${error.message}`);
