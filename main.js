@@ -30,7 +30,17 @@ const VIDEO_EXTENSIONS = new Set([
   ".3gp",
   ".ts",
   ".mts",
-  ".m2ts"
+  ".m2ts",
+  ".ogv",
+  ".ogm",
+  ".qt",
+  ".asf",
+  ".vob",
+  ".mxf",
+  ".f4v",
+  ".rm",
+  ".rmvb",
+  ".divx"
 ]);
 
 let mainWindow = null;

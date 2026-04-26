@@ -200,6 +200,11 @@ select {
   flex: 1 1 auto;
 }
 
+.board-actions-right {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
 .progress-counter,
 .summary-box {
   min-height: 34px;
@@ -210,6 +215,18 @@ select {
 
 .progress-counter {
   padding: 0 12px;
+}
+
+.board-stop-button {
+  min-width: 84px;
+  background: #111;
+  color: rgba(255, 255, 255, 0.42);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.board-stop-button:not(:disabled) {
+  color: #fff;
+  border-color: #111;
 }
 
 .summary-box {

@@ -2,11 +2,39 @@ import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist
 import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
+const VIDEO_EXTENSIONS = new Set([
+  "mp4",
+  "mov",
+  "mkv",
+  "avi",
+  "webm",
+  "m4v",
+  "wmv",
+  "flv",
+  "mpeg",
+  "mpg",
+  "3gp",
+  "ts",
+  "mts",
+  "m2ts",
+  "ogv",
+  "ogm",
+  "qt",
+  "asf",
+  "vob",
+  "mxf",
+  "f4v",
+  "rm",
+  "rmvb",
+  "divx"
+]);
+
 const state = {
   jobs: [],
   ffmpeg: null,
   ffmpegLoaded: false,
-  running: false
+  running: false,
+  cancelRequested: false
 };
 
 const elements = {
@@ -31,10 +59,29 @@ const elements = {
   progressCounter: document.querySelector("#progressCounter"),
   jobsMeter: document.querySelector("#jobsMeter"),
   jobsMeterLabel: document.querySelector("#jobsMeterLabel"),
+  topStopButton: document.querySelector("#topStopButton"),
   queueBody: document.querySelector("#queueBody"),
   dropZone: document.querySelector("#dropZone"),
   logPanel: document.querySelector("#logPanel")
 };
+
+function getExtension(name = "") {
+  const match = String(name).toLowerCase().match(/\.([^.]+)$/);
+  return match ? match[1] : "";
+}
+
+function isSupportedVideoFile(file) {
+  if (!file) {
+    return false;
+  }
+
+  const extension = getExtension(file.name);
+  if (VIDEO_EXTENSIONS.has(extension)) {
+    return true;
+  }
+
+  return String(file.type || "").startsWith("video/");
+}
 
 function addLog(message, tone = "default") {
   const item = document.createElement("div");
@@ -82,12 +129,17 @@ function createJob(file) {
 
 function updateSummary() {
   const total = state.jobs.length;
-  const completed = state.jobs.filter((job) => job.gifBlob).length;
+  const readyJobs = state.jobs.filter((job) => job.gifBlob);
+  const completed = readyJobs.length;
   elements.progressCounter.textContent = `${completed} / ${total} completed`;
   elements.jobsMeterLabel.textContent = `${total} jobs`;
   const progress = total === 0 ? 0 : (completed / total) * 100;
   elements.jobsMeter.style.setProperty("--completion-progress", `${progress}%`);
+  elements.zipButton.textContent = completed === 1 ? "Download GIF" : "Download ZIP";
   elements.zipButton.disabled = completed === 0 || state.running;
+  if (elements.topStopButton) {
+    elements.topStopButton.disabled = !state.running;
+  }
 }
 
 function renderQueue() {
@@ -190,6 +242,19 @@ async function ensureFfmpeg() {
   return ffmpeg;
 }
 
+async function resetFfmpeg() {
+  if (state.ffmpeg && typeof state.ffmpeg.terminate === "function") {
+    try {
+      await state.ffmpeg.terminate();
+    } catch (_error) {
+      // no-op
+    }
+  }
+
+  state.ffmpeg = null;
+  state.ffmpegLoaded = false;
+}
+
 async function convertJob(job, index, total) {
   const ffmpeg = await ensureFfmpeg();
   const inputName = `${job.id}-${job.file.name}`;
@@ -209,42 +274,69 @@ async function convertJob(job, index, total) {
     renderQueue();
   });
 
-  await ffmpeg.writeFile(inputName, await fetchFile(job.file));
-  await ffmpeg.exec([
-    "-i",
-    inputName,
-    "-vf",
-    `fps=${fps},${scale},palettegen=max_colors=${render.colors}:stats_mode=${render.stats}`,
-    paletteName
-  ]);
+  try {
+    await ffmpeg.writeFile(inputName, await fetchFile(job.file));
+    await ffmpeg.exec([
+      "-i",
+      inputName,
+      "-vf",
+      `fps=${fps},${scale},palettegen=max_colors=${render.colors}:stats_mode=${render.stats}`,
+      paletteName
+    ]);
 
-  const paletteUse =
-    render.dither === "bayer"
-      ? `paletteuse=dither=bayer:bayer_scale=${render.bayerScale || 3}`
-      : `paletteuse=dither=${render.dither}`;
+    const paletteUse =
+      render.dither === "bayer"
+        ? `paletteuse=dither=bayer:bayer_scale=${render.bayerScale || 3}`
+        : `paletteuse=dither=${render.dither}`;
 
-  await ffmpeg.exec([
-    "-i",
-    inputName,
-    "-i",
-    paletteName,
-    "-lavfi",
-    `fps=${fps},${scale}[x];[x][1:v]${paletteUse}`,
-    "-loop",
-    "0",
-    outputName
-  ]);
+    await ffmpeg.exec([
+      "-i",
+      inputName,
+      "-i",
+      paletteName,
+      "-lavfi",
+      `fps=${fps},${scale}[x];[x][1:v]${paletteUse}`,
+      "-loop",
+      "0",
+      outputName
+    ]);
 
-  const data = await ffmpeg.readFile(outputName);
-  job.gifBlob = new Blob([data.buffer], { type: "image/gif" });
-  job.status = "Completed";
-  job.progress = 100;
-  await ffmpeg.deleteFile(inputName);
-  await ffmpeg.deleteFile(paletteName);
-  await ffmpeg.deleteFile(outputName);
-  addLog(`${job.file.name} was converted to GIF successfully.`, "success");
-  setStatus(`Converted ${index + 1}/${total}.`, "ready");
-  renderQueue();
+    const data = await ffmpeg.readFile(outputName);
+    job.gifBlob = new Blob([data.buffer], { type: "image/gif" });
+    job.status = "Completed";
+    job.progress = 100;
+    addLog(`${job.file.name} was converted to GIF successfully.`, "success");
+    setStatus(`Converted ${index + 1}/${total}.`, "ready");
+  } catch (error) {
+    if (state.cancelRequested) {
+      job.status = "Cancelled";
+      job.progress = 0;
+      addLog(`${job.file.name} was cancelled.`, "error");
+      return;
+    }
+
+    job.status = "Error";
+    job.progress = 0;
+    addLog(`Conversion error: ${error.message}`, "error");
+    throw error;
+  } finally {
+    try {
+      await ffmpeg.deleteFile(inputName);
+    } catch (_error) {
+      // no-op
+    }
+    try {
+      await ffmpeg.deleteFile(paletteName);
+    } catch (_error) {
+      // no-op
+    }
+    try {
+      await ffmpeg.deleteFile(outputName);
+    } catch (_error) {
+      // no-op
+    }
+    renderQueue();
+  }
 }
 
 async function exportAll() {
@@ -252,6 +344,7 @@ async function exportAll() {
     return;
   }
 
+  state.cancelRequested = false;
   state.running = true;
   elements.exportButton.disabled = true;
   elements.zipButton.disabled = true;
@@ -266,8 +359,16 @@ async function exportAll() {
 
     for (let index = 0; index < jobs.length; index += 1) {
       await convertJob(jobs[index], index, jobs.length);
+      if (state.cancelRequested) {
+        break;
+      }
     }
-    setStatus("GIFs are ready.", "ready");
+    if (state.cancelRequested) {
+      setStatus("Export stopped.", "warn");
+      addLog("Export was stopped by the user.", "error");
+    } else {
+      setStatus("GIFs are ready.", "ready");
+    }
   } catch (error) {
     console.error(error);
     setStatus("Browser conversion failed.", "error");
@@ -275,15 +376,32 @@ async function exportAll() {
   } finally {
     state.running = false;
     elements.exportButton.disabled = false;
+    state.cancelRequested = false;
     updateSummary();
   }
 }
 
-async function downloadZip() {
+function downloadGifBlob(job) {
+  const url = URL.createObjectURL(job.gifBlob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = job.gifName;
+  link.click();
+  URL.revokeObjectURL(url);
+  setStatus("GIF downloaded.", "ready");
+  addLog("GIF download is ready.", "success");
+}
+
+async function downloadOutputs() {
   const ready = state.jobs.filter((job) => job.gifBlob);
   if (ready.length === 0) {
     setStatus("No GIFs are ready for ZIP.", "warn");
     addLog("No GIFs are ready for ZIP.", "error");
+    return;
+  }
+
+  if (ready.length === 1) {
+    downloadGifBlob(ready[0]);
     return;
   }
 
@@ -300,8 +418,19 @@ async function downloadZip() {
   addLog("ZIP download is ready.", "success");
 }
 
+async function stopExport() {
+  if (!state.running) {
+    return;
+  }
+
+  state.cancelRequested = true;
+  setStatus("Stopping export...", "warn");
+  addLog("Stop requested.", "error");
+  await resetFfmpeg();
+}
+
 function addFiles(fileList) {
-  const fresh = Array.from(fileList).filter((file) => file.type.startsWith("video/"));
+  const fresh = Array.from(fileList).filter((file) => isSupportedVideoFile(file));
   if (fresh.length === 0) {
     setStatus("No supported videos found.", "warn");
     addLog("No supported videos found.", "error");
@@ -339,7 +468,10 @@ elements.applySelectedFpsButton.addEventListener("click", () => {
 });
 elements.sizeModeSelect.addEventListener("change", updateSizeModeUi);
 elements.exportButton.addEventListener("click", exportAll);
-elements.zipButton.addEventListener("click", downloadZip);
+elements.zipButton.addEventListener("click", downloadOutputs);
+if (elements.topStopButton) {
+  elements.topStopButton.addEventListener("click", stopExport);
+}
 elements.selectAllButton.addEventListener("click", () => {
   const next = state.jobs.some((job) => !job.selected);
   state.jobs = state.jobs.map((job) => ({ ...job, selected: next }));
