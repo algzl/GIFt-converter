@@ -344,14 +344,51 @@ tbody td {
   background: #111;
 }
 
+.progress-bar.is-complete span {
+  background: #387a49;
+}
+
 .progress-copy {
   margin-top: 6px;
   color: var(--muted);
 }
 
+.progress-copy.is-complete {
+  color: #387a49;
+}
+
 .output-link {
   color: var(--text);
   text-decoration: underline;
+}
+
+.output-cell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.output-copy {
+  min-width: 0;
+}
+
+.row-remove-button {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #111;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+tr:hover .row-remove-button,
+.row-remove-button:focus-visible {
+  opacity: 1;
 }
 
 .log-overlay {

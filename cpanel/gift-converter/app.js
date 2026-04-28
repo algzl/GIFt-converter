@@ -1,7 +1,3 @@
-import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js";
-import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.2/dist/esm/index.js";
-import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
-
 const VIDEO_EXTENSIONS = new Set([
   "mp4",
   "mov",
@@ -29,12 +25,20 @@ const VIDEO_EXTENSIONS = new Set([
   "divx"
 ]);
 
+const { FFmpeg } = window.FFmpegWASM;
+const JSZip = window.JSZip;
+const LOCAL_CORE_URL = new URL("./vendor/core/ffmpeg-core.js", window.location.href).href;
+const LOCAL_WASM_URL = new URL("./vendor/core/ffmpeg-core.wasm", window.location.href).href;
+
 const state = {
   jobs: [],
   ffmpeg: null,
   ffmpegLoaded: false,
+  ffmpegLoadPromise: null,
   running: false,
-  cancelRequested: false
+  cancelRequested: false,
+  activeProgressJobId: null,
+  canResume: false
 };
 
 const elements = {
@@ -59,6 +63,7 @@ const elements = {
   progressCounter: document.querySelector("#progressCounter"),
   jobsMeter: document.querySelector("#jobsMeter"),
   jobsMeterLabel: document.querySelector("#jobsMeterLabel"),
+  topResumeButton: document.querySelector("#topResumeButton"),
   topStopButton: document.querySelector("#topStopButton"),
   queueBody: document.querySelector("#queueBody"),
   dropZone: document.querySelector("#dropZone"),
@@ -83,6 +88,35 @@ function isSupportedVideoFile(file) {
   return String(file.type || "").startsWith("video/");
 }
 
+function fetchFile(file) {
+  return new Promise((resolve, reject) => {
+    if (file instanceof File || file instanceof Blob) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const { result } = reader;
+        resolve(result instanceof ArrayBuffer ? new Uint8Array(result) : new Uint8Array());
+      };
+      reader.onerror = (event) => {
+        reject(
+          Error(`File could not be read! Code=${event?.target?.error?.code || -1}`)
+        );
+      };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
+
+    if (typeof file === "string") {
+      fetch(file)
+        .then((response) => response.arrayBuffer())
+        .then((buffer) => resolve(new Uint8Array(buffer)))
+        .catch(reject);
+      return;
+    }
+
+    resolve(new Uint8Array());
+  });
+}
+
 function addLog(message, tone = "default") {
   const item = document.createElement("div");
   item.className = `log-entry${tone === "default" ? "" : ` log-entry-${tone}`}`;
@@ -103,6 +137,22 @@ function setStatus(text, tone = "ready") {
 
 function getDefaultFps() {
   return Math.max(1, Math.min(60, Number(elements.bulkFpsInput.value) || 15));
+}
+
+function hasResumableJobs() {
+  return state.jobs.some((job) => !job.gifBlob);
+}
+
+function setRunning(isRunning) {
+  state.running = isRunning;
+  elements.exportButton.disabled = isRunning;
+  elements.zipButton.disabled = isRunning || state.jobs.filter((job) => job.gifBlob).length === 0;
+  if (elements.topResumeButton) {
+    elements.topResumeButton.disabled = isRunning || !state.canResume;
+  }
+  if (elements.topStopButton) {
+    elements.topStopButton.disabled = !isRunning;
+  }
 }
 
 function updateSizeModeUi() {
@@ -127,6 +177,28 @@ function createJob(file) {
   };
 }
 
+function removeQueuedJob(jobId) {
+  const targetIndex = state.jobs.findIndex((job) => job.id === jobId);
+  if (targetIndex === -1) {
+    return;
+  }
+
+  const targetJob = state.jobs[targetIndex];
+  if (state.running && targetJob.status === "Converting") {
+    stopExport();
+    return;
+  }
+
+  if (state.running) {
+    return;
+  }
+
+  URL.revokeObjectURL(targetJob.previewUrl);
+  state.jobs.splice(targetIndex, 1);
+  renderQueue();
+  setStatus("Video removed from the queue.", "ready");
+}
+
 function updateSummary() {
   const total = state.jobs.length;
   const readyJobs = state.jobs.filter((job) => job.gifBlob);
@@ -135,8 +207,13 @@ function updateSummary() {
   elements.jobsMeterLabel.textContent = `${total} jobs`;
   const progress = total === 0 ? 0 : (completed / total) * 100;
   elements.jobsMeter.style.setProperty("--completion-progress", `${progress}%`);
+  elements.jobsMeter.classList.toggle("is-running", state.running && completed < total);
   elements.zipButton.textContent = completed === 1 ? "Download GIF" : "Download ZIP";
   elements.zipButton.disabled = completed === 0 || state.running;
+  state.canResume = hasResumableJobs();
+  if (elements.topResumeButton) {
+    elements.topResumeButton.disabled = state.running || !state.canResume;
+  }
   if (elements.topStopButton) {
     elements.topStopButton.disabled = !state.running;
   }
@@ -155,11 +232,30 @@ function renderQueue() {
 
   elements.queueBody.innerHTML = state.jobs
     .map((job) => {
+      const progressPercent =
+        job.status === "Completed"
+          ? 100
+          : Math.max(0, Math.min(100, Math.round(Number(job.progress) || 0)));
       const output = job.gifBlob
         ? `<a class="output-link" href="${URL.createObjectURL(job.gifBlob)}" download="${job.gifName}">Download GIF</a>`
         : "Not ready";
+      const rowAction =
+        state.running
+          ? job.status === "Converting"
+            ? `<button class="row-remove-button" type="button" data-remove-row="${job.id}" aria-label="Abort">x</button>`
+            : ""
+          : `<button class="row-remove-button" type="button" data-remove-row="${job.id}" aria-label="Remove">x</button>`;
+      const statusClasses = [
+        "status-pill",
+        job.status === "Waiting" && state.running ? "is-pending" : "",
+        job.status === "Converting" ? "is-active" : "",
+        job.status === "Completed" ? "is-complete" : "",
+        job.status === "Error" || job.status === "Cancelled" ? "is-error" : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
       return `
-        <tr>
+        <tr class="${job.status === "Completed" ? "row-done" : ""}">
           <td><input type="checkbox" data-select="${job.id}" ${job.selected ? "checked" : ""} /></td>
           <td>
             <div class="file-cell">
@@ -171,14 +267,19 @@ function renderQueue() {
             </div>
           </td>
           <td><input class="row-fps-input" type="number" min="1" max="60" value="${job.fps}" data-fps="${job.id}" /></td>
-          <td><span class="status-pill">${job.status}</span></td>
+          <td><span class="${statusClasses}">${job.status}</span></td>
           <td>
             <div class="progress-wrap">
-              <div class="progress-bar"><span style="width:${job.progress}%"></span></div>
-              <div class="progress-copy">${Math.round(job.progress)}%</div>
+              <div class="progress-bar ${job.status === "Completed" ? "is-complete" : ""}"><span style="width:${progressPercent}%"></span></div>
+              <div class="progress-copy ${job.status === "Completed" ? "is-complete" : ""}">${progressPercent}%</div>
             </div>
           </td>
-          <td>${output}</td>
+          <td>
+            <div class="output-cell">
+              <div class="output-copy">${output}</div>
+              ${rowAction}
+            </div>
+          </td>
         </tr>
       `;
     })
@@ -217,29 +318,41 @@ async function ensureFfmpeg() {
     return state.ffmpeg;
   }
 
+  if (state.ffmpegLoadPromise) {
+    return state.ffmpegLoadPromise;
+  }
+
   setStatus("Loading browser engine...", "warn");
   addLog("Loading browser engine...");
-  const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm";
-  const packageURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm";
-  const ffmpeg = new FFmpeg();
-  const [coreURL, wasmURL, workerURL] = await Promise.all([
-    toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-    toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-    toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, "text/javascript")
-  ]);
-  const classWorkerURL = URL.createObjectURL(
-    new Blob([`import "${packageURL}/worker.js";`], { type: "text/javascript" })
-  );
-  await ffmpeg.load({
-    coreURL,
-    wasmURL,
-    workerURL,
-    classWorkerURL
-  });
-  state.ffmpeg = ffmpeg;
-  state.ffmpegLoaded = true;
-  addLog("Browser engine is ready.", "success");
-  return ffmpeg;
+  state.ffmpegLoadPromise = (async () => {
+    const ffmpeg = new FFmpeg();
+    await ffmpeg.load({
+      coreURL: LOCAL_CORE_URL,
+      wasmURL: LOCAL_WASM_URL
+    });
+    ffmpeg.on("progress", ({ progress }) => {
+      const job = state.jobs.find((item) => item.id === state.activeProgressJobId);
+      if (!job || job.status === "Completed" || job.status === "Cancelled" || job.status === "Error") {
+        return;
+      }
+
+      const nextProgress = Math.max(6, Math.min(98, progress * 100));
+      job.progress = Math.max(Number(job.progress) || 0, nextProgress);
+      renderQueue();
+    });
+    state.ffmpeg = ffmpeg;
+    state.ffmpegLoaded = true;
+    addLog("Browser engine is ready.", "success");
+    return ffmpeg;
+  })();
+
+  try {
+    return await state.ffmpegLoadPromise;
+  } finally {
+    if (!state.ffmpegLoaded) {
+      state.ffmpegLoadPromise = null;
+    }
+  }
 }
 
 async function resetFfmpeg() {
@@ -253,6 +366,21 @@ async function resetFfmpeg() {
 
   state.ffmpeg = null;
   state.ffmpegLoaded = false;
+  state.ffmpegLoadPromise = null;
+}
+
+function warmBrowserEngine() {
+  if (state.ffmpegLoaded || state.ffmpegLoadPromise) {
+    return;
+  }
+
+  ensureFfmpeg().catch((error) => {
+    console.error(error);
+    addLog(`Browser engine preload failed: ${error.message}`, "error");
+    if (!state.running) {
+      setStatus("Browser engine failed to preload.", "warn");
+    }
+  });
 }
 
 async function convertJob(job, index, total) {
@@ -267,12 +395,8 @@ async function convertJob(job, index, total) {
   addLog(`GIF generation started for ${job.file.name}. FPS: ${fps}`);
   job.status = "Converting";
   job.progress = 6;
+  state.activeProgressJobId = job.id;
   renderQueue();
-
-  ffmpeg.on("progress", ({ progress }) => {
-    job.progress = Math.max(6, Math.min(98, progress * 100));
-    renderQueue();
-  });
 
   try {
     await ffmpeg.writeFile(inputName, await fetchFile(job.file));
@@ -335,27 +459,44 @@ async function convertJob(job, index, total) {
     } catch (_error) {
       // no-op
     }
+    if (state.activeProgressJobId === job.id) {
+      state.activeProgressJobId = null;
+    }
     renderQueue();
   }
 }
 
-async function exportAll() {
+async function exportAll(resumeMode = false) {
   if (state.running || state.jobs.length === 0) {
     return;
   }
 
-  state.cancelRequested = false;
-  state.running = true;
-  elements.exportButton.disabled = true;
-  elements.zipButton.disabled = true;
-
   try {
-    const jobs = state.jobs.filter((job) => job.selected);
+    const jobs = state.jobs.filter((job) => job.selected && (!resumeMode || !job.gifBlob));
     if (jobs.length === 0) {
-      setStatus("Select videos first.", "warn");
-      addLog("Select videos first.", "error");
+      setStatus(resumeMode ? "No remaining videos to continue." : "Select videos first.", "warn");
+      addLog(resumeMode ? "No remaining videos to continue." : "Select videos first.", "error");
       return;
     }
+
+    state.cancelRequested = false;
+    state.canResume = false;
+    for (const job of state.jobs) {
+      if (!job.selected) {
+        continue;
+      }
+      if (resumeMode && job.gifBlob) {
+        continue;
+      }
+      job.status = "Waiting";
+      job.progress = 0;
+      if (!resumeMode) {
+        job.gifBlob = null;
+      }
+    }
+    setRunning(true);
+    renderQueue();
+    setStatus(resumeMode ? "Continuing queue..." : "Preparing export...", "warn");
 
     for (let index = 0; index < jobs.length; index += 1) {
       await convertJob(jobs[index], index, jobs.length);
@@ -369,13 +510,20 @@ async function exportAll() {
     } else {
       setStatus("GIFs are ready.", "ready");
     }
+    const successCount = state.jobs.filter((job) => job.gifBlob).length;
+    const errorCount = state.jobs.filter((job) => job.status === "Error").length;
+    const cancelledCount = state.jobs.filter((job) => job.status === "Cancelled").length;
+    addLog(
+      `Export finished. Success: ${successCount}, errors: ${errorCount}, cancelled: ${cancelledCount}.`,
+      errorCount > 0 || cancelledCount > 0 ? "error" : "success"
+    );
   } catch (error) {
     console.error(error);
     setStatus("Browser conversion failed.", "error");
     addLog(`Conversion error: ${error.message}`, "error");
   } finally {
-    state.running = false;
-    elements.exportButton.disabled = false;
+    state.canResume = hasResumableJobs();
+    setRunning(false);
     state.cancelRequested = false;
     updateSummary();
   }
@@ -429,21 +577,35 @@ async function stopExport() {
   await resetFfmpeg();
 }
 
+async function continueExport() {
+  return exportAll(true);
+}
+
 function addFiles(fileList) {
-  const fresh = Array.from(fileList).filter((file) => isSupportedVideoFile(file));
-  if (fresh.length === 0) {
+  const files = Array.from(fileList || []);
+  const fresh = files.filter((file) => isSupportedVideoFile(file));
+  const fallback = fresh.length === 0 ? files.filter(Boolean) : [];
+  const accepted = fresh.length > 0 ? fresh : fallback;
+  if (accepted.length === 0) {
     setStatus("No supported videos found.", "warn");
     addLog("No supported videos found.", "error");
     return;
   }
-  state.jobs.push(...fresh.map(createJob));
+  state.jobs.push(...accepted.map(createJob));
   renderQueue();
-  setStatus(`${fresh.length} videos added.`, "ready");
-  addLog(`${fresh.length} videos added.`, "success");
+  setStatus(`${accepted.length} videos added.`, "ready");
+  warmBrowserEngine();
+  if (fresh.length === 0 && fallback.length > 0) {
+    addLog(`Accepted ${accepted.length} selected files with fallback detection.`, "success");
+  } else {
+    addLog(`${accepted.length} videos added.`, "success");
+  }
 }
 
-elements.pickButton.addEventListener("click", () => elements.fileInput.click());
-elements.fileInput.addEventListener("change", (event) => addFiles(event.target.files));
+elements.fileInput.addEventListener("change", (event) => {
+  addFiles(event.target.files);
+  event.target.value = "";
+});
 elements.applyAllFpsButton.addEventListener("click", () => {
   const fps = getDefaultFps();
   state.jobs.forEach((job) => {
@@ -467,8 +629,11 @@ elements.applySelectedFpsButton.addEventListener("click", () => {
   addLog(`Applied FPS ${fps} to ${selected.length} selected videos.`);
 });
 elements.sizeModeSelect.addEventListener("change", updateSizeModeUi);
-elements.exportButton.addEventListener("click", exportAll);
+elements.exportButton.addEventListener("click", () => exportAll(false));
 elements.zipButton.addEventListener("click", downloadOutputs);
+if (elements.topResumeButton) {
+  elements.topResumeButton.addEventListener("click", continueExport);
+}
 if (elements.topStopButton) {
   elements.topStopButton.addEventListener("click", stopExport);
 }
@@ -478,13 +643,34 @@ elements.selectAllButton.addEventListener("click", () => {
   renderQueue();
 });
 elements.clearButton.addEventListener("click", () => {
-  state.jobs.forEach((job) => URL.revokeObjectURL(job.previewUrl));
-  state.jobs = [];
+  if (state.running) {
+    return;
+  }
+
+  const selectedIds = new Set(state.jobs.filter((job) => job.selected).map((job) => job.id));
+  if (selectedIds.size === 0) {
+    setStatus("Select videos first.", "warn");
+    addLog("Select videos first.", "error");
+    return;
+  }
+
+  state.jobs.forEach((job) => {
+    if (selectedIds.has(job.id)) {
+      URL.revokeObjectURL(job.previewUrl);
+    }
+  });
+  state.jobs = state.jobs.filter((job) => !selectedIds.has(job.id));
   renderQueue();
-  setStatus("List cleared.", "ready");
-  addLog("List cleared.");
+  setStatus("Selected videos cleared.", "ready");
+  addLog("Selected videos cleared.");
 });
 elements.queueBody.addEventListener("change", (event) => {
+  const removeTarget = event.target.closest("[data-remove-row]");
+  if (removeTarget) {
+    removeQueuedJob(removeTarget.dataset.removeRow);
+    return;
+  }
+
   const selectTarget = event.target.closest("[data-select]");
   if (selectTarget) {
     state.jobs = state.jobs.map((job) =>
@@ -504,6 +690,16 @@ elements.queueBody.addEventListener("change", (event) => {
   }
 });
 
+elements.queueBody.addEventListener("click", (event) => {
+  const removeTarget = event.target.closest("[data-remove-row]");
+  if (!removeTarget) {
+    return;
+  }
+
+  event.preventDefault();
+  removeQueuedJob(removeTarget.dataset.removeRow);
+});
+
 ["dragenter", "dragover"].forEach((type) => {
   elements.dropZone.addEventListener(type, (event) => {
     event.preventDefault();
@@ -518,3 +714,9 @@ elements.dropZone.addEventListener("drop", (event) => {
 updateSizeModeUi();
 renderQueue();
 addLog("Web app is ready.");
+
+if ("requestIdleCallback" in window) {
+  window.requestIdleCallback(() => warmBrowserEngine(), { timeout: 1200 });
+} else {
+  window.setTimeout(() => warmBrowserEngine(), 700);
+}

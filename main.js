@@ -14,7 +14,7 @@ const os = require("os");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 const { pathToFileURL } = require("url");
-const ffmpegPath = require("ffmpeg-static");
+const ffmpegStaticPath = require("ffmpeg-static");
 
 const VIDEO_EXTENSIONS = new Set([
   ".mp4",
@@ -49,6 +49,18 @@ let cancelRequested = false;
 let isQuitting = false;
 
 app.setName("gift-converter");
+
+function getFfmpegExecutablePath() {
+  if (!ffmpegStaticPath) {
+    throw new Error("ffmpeg-static path could not be resolved.");
+  }
+
+  if (!app.isPackaged) {
+    return ffmpegStaticPath;
+  }
+
+  return ffmpegStaticPath.replace("app.asar", "app.asar.unpacked");
+}
 
 function createTrayIcon() {
   const svg = `
@@ -305,7 +317,7 @@ function generatePreviewForVideo(filePath) {
       "scale=84:-1:flags=lanczos",
       outputPath
     ];
-    const child = spawn(ffmpegPath, args, { windowsHide: true });
+    const child = spawn(getFfmpegExecutablePath(), args, { windowsHide: true });
 
     child.on("close", (code) => {
       if (code === 0 && fs.existsSync(outputPath)) {
@@ -411,7 +423,7 @@ function buildOptimizedGifDraft(filePath, qualityPercent) {
       filter,
       tempOutput
     ];
-    const child = spawn(ffmpegPath, args, { windowsHide: true });
+    const child = spawn(getFfmpegExecutablePath(), args, { windowsHide: true });
     let stderr = "";
 
     child.stderr.on("data", (chunk) => {
@@ -428,7 +440,7 @@ function buildOptimizedGifDraft(filePath, qualityPercent) {
       }
 
       const probe = spawn(
-        ffmpegPath,
+        getFfmpegExecutablePath(),
         ["-hide_banner", "-loglevel", "error", "-i", tempOutput, "-f", "null", "-"],
         { windowsHide: true }
       );
@@ -544,7 +556,7 @@ function timeToSeconds(timeText) {
 function probeDuration(filePath) {
   return new Promise((resolve) => {
     const args = ["-hide_banner", "-i", filePath];
-    const child = spawn(ffmpegPath, args, { windowsHide: true });
+    const child = spawn(getFfmpegExecutablePath(), args, { windowsHide: true });
     let stderr = "";
 
     child.stderr.on("data", (chunk) => {
@@ -684,7 +696,7 @@ function convertSingleVideo(job, settings) {
       ...effectiveSettings,
       fps: job.fps || effectiveSettings.fps || 12
     });
-    const child = spawn(ffmpegPath, args, { windowsHide: true });
+    const child = spawn(getFfmpegExecutablePath(), args, { windowsHide: true });
     let stderr = "";
     let settled = false;
     const cancelChannel = `cancel-conversion-${job.id}`;

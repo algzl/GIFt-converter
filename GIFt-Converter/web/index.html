@@ -1,0 +1,687 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>gift-converter</title>
+    <meta
+      name="description"
+      content="Browser-based batch video to GIF converter with per-file FPS, render modes, and ZIP download."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <style>
+:root {
+  --bg: #e6e6e6;
+  --panel: #fffdfa;
+  --line: #d8d3c7;
+  --text: #111111;
+  --muted: #706b61;
+  --dot: rgba(17, 17, 17, 0.065);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 "Space Mono", "Courier New", monospace;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+input,
+select,
+.left-panel,
+.workspace-board,
+.table-wrap,
+.progress-counter,
+.summary-box {
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+button {
+  min-height: 34px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.desktop-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 312px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+}
+
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+}
+
+.panel-section {
+  padding: 8px 0;
+}
+
+.panel-section + .panel-section {
+  margin-top: 6px;
+}
+
+.section-title {
+  margin-bottom: 8px;
+}
+
+.primary-section {
+  display: grid;
+  gap: 8px;
+}
+
+.file-picker-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  width: 100%;
+  min-height: 34px;
+}
+
+.file-picker-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.primary-button,
+.dark-button,
+.board-select-button,
+.board-clear-button {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.wide-button,
+.stack-actions > button {
+  width: 100%;
+}
+
+.status-line {
+  margin: 0;
+  color: #387a49;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+input,
+select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+}
+
+.stack-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.field-disabled {
+  opacity: 0.42;
+}
+
+.brand-footer {
+  margin-top: auto;
+  min-height: 176px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.brand-link-button {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.brand-mark {
+  width: 184px;
+  height: auto;
+  display: block;
+}
+
+.desktop-link {
+  position: absolute;
+  right: -4px;
+  bottom: 58px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 11px;
+}
+
+.github-mark {
+  width: 13px;
+  height: 13px;
+}
+
+.right-panel {
+  min-width: 0;
+  display: flex;
+}
+
+.workspace-board {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.board-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 0);
+  background-size: 9px 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.board-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.board-actions-left {
+  flex: 1 1 auto;
+}
+
+.board-actions-right {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.progress-counter,
+.summary-box {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progress-counter {
+  padding: 0 12px;
+}
+
+.board-stop-button {
+  min-width: 84px;
+  background: #111;
+  color: rgba(255, 255, 255, 0.42);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.board-stop-button:not(:disabled) {
+  color: #fff;
+  border-color: #111;
+}
+
+.summary-box {
+  position: relative;
+  min-width: 136px;
+  padding: 0 12px;
+  overflow: hidden;
+}
+
+.summary-box-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--completion-progress, 0%);
+  background: #111;
+  transition: width 160ms ease;
+}
+
+.summary-box.is-running .summary-box-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.22) 36%,
+    transparent 72%
+  );
+  background-size: 54px 100%;
+  animation: summary-sheen 1s linear infinite;
+}
+
+.summary-box-label {
+  position: relative;
+  z-index: 1;
+  color: #fff;
+  mix-blend-mode: difference;
+}
+
+.board-scroll {
+  min-height: 0;
+  overflow: auto;
+  background: #fff;
+}
+
+.table-wrap {
+  border: 0;
+  background: #fff;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  background: #fff;
+  text-align: left;
+  padding: 14px 12px;
+  border-bottom: 1px solid #ece7dd;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+tbody td {
+  background: #fff;
+  border-top: 1px solid #ece7dd;
+  padding: 12px;
+  vertical-align: top;
+}
+
+.empty-row td {
+  text-align: center;
+  color: var(--muted);
+  padding: 28px 12px;
+}
+
+.file-cell {
+  display: flex;
+  gap: 14px;
+}
+
+.preview {
+  width: 156px;
+  height: 96px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  background: #f1ede4;
+}
+
+.file-name {
+  font-weight: 400;
+}
+
+.file-sub {
+  margin-top: 4px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.row-fps-input {
+  width: 86px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.status-pill.is-pending::after,
+.status-pill.is-active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -55deg,
+    transparent 0 8px,
+    rgba(17, 17, 17, 0.08) 8px 16px
+  );
+  background-size: 32px 100%;
+  animation: pending-stripes 1.1s linear infinite;
+  pointer-events: none;
+}
+
+.progress-wrap {
+  min-width: 180px;
+}
+
+.progress-bar {
+  height: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  overflow: hidden;
+}
+
+.progress-bar span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: #111;
+}
+
+.progress-bar.is-complete span {
+  background: #387a49;
+}
+
+.progress-copy {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.progress-copy.is-complete {
+  color: #387a49;
+}
+
+.output-link {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.output-cell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.output-copy {
+  min-width: 0;
+}
+
+.row-remove-button {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #111;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+tr:hover .row-remove-button,
+.row-remove-button:focus-visible {
+  opacity: 1;
+}
+
+.log-overlay {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: min(420px, calc(100vw - 32px));
+  height: 154px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(198, 198, 192, 0.34);
+  border-radius: 18px;
+}
+
+.log-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 4px;
+}
+
+.log-title {
+  color: rgba(22, 22, 22, 0.7);
+  font-size: 12px;
+}
+
+.log-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.log-entry {
+  text-align: right;
+  color: rgba(22, 22, 22, 0.82);
+}
+
+.log-entry-success {
+  color: rgba(56, 122, 73, 0.9);
+}
+
+.log-entry-error {
+  color: rgba(176, 46, 46, 0.92);
+}
+
+.log-time {
+  color: rgba(102, 102, 95, 0.78);
+  font-size: 12px;
+}
+
+@keyframes summary-sheen {
+  from {
+    transform: translateX(-56px);
+  }
+  to {
+    transform: translateX(56px);
+  }
+}
+
+@keyframes pending-stripes {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 32px 0;
+  }
+}
+
+@media (max-width: 980px) {
+  .desktop-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .log-overlay {
+    width: calc(100vw - 32px);
+  }
+}
+
+    </style>
+</head>
+  <body>
+    <div class="desktop-shell">
+      <aside class="left-panel">
+        <section class="panel-section primary-section import-section">
+          <label id="pickButton" class="primary-button file-picker-button">
+            <span>Start Import</span>
+            <input id="fileInput" class="file-picker-input" type="file" accept=".mp4,.mov,.mkv,.avi,.webm,.m4v,.wmv,.flv,.mpeg,.mpg,.3gp,.ts,.mts,.m2ts,.ogv,.ogm,.qt,.asf,.vob,.mxf,.f4v,.rm,.rmvb,.divx" multiple />
+          </label>
+          <p id="statusLine" class="status-line">Ready.</p>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-title">FPS</div>
+          <label>
+            FPS to apply
+            <input id="bulkFpsInput" type="number" min="1" max="60" value="15" />
+          </label>
+          <div class="stack-actions">
+            <button id="applyAllFpsButton" class="dark-button wide-button" type="button">Apply to All</button>
+            <button id="applySelectedFpsButton" class="wide-button" type="button">Apply to Selected</button>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-title">Quality</div>
+          <label>
+            Render mode
+            <select id="renderModeSelect">
+              <option value="clean">Clean</option>
+              <option value="detail">Detail</option>
+              <option value="retro">Retro</option>
+              <option value="stable">Stable</option>
+            </select>
+          </label>
+          <label>
+            Color count
+            <input id="colorCountInput" type="number" min="16" max="256" value="96" />
+          </label>
+          <label>
+            Width mode
+            <select id="sizeModeSelect">
+              <option value="long-edge" selected>Original</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label>
+            <span id="primarySizeLabel">Long edge (px)</span>
+            <input id="widthInput" type="number" min="64" max="1920" value="640" />
+          </label>
+          <label id="heightField" class="field-disabled">
+            <span id="secondarySizeLabel">Height (auto)</span>
+            <input id="heightInput" type="number" min="64" max="1920" value="480" disabled />
+          </label>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-title">Output</div>
+          <div class="stack-actions">
+            <button id="exportButton" class="dark-button wide-button" type="button">Start</button>
+            <button id="zipButton" class="wide-button" type="button" disabled>Download ZIP</button>
+          </div>
+        </section>
+
+        <div class="brand-footer">
+          <div class="brand-link-button">
+            <svg class="brand-mark" xmlns="http://www.w3.org/2000/svg" width="295.804" height="322.82" viewBox="0 0 295.804 322.82" aria-hidden="true">
+              <g>
+                <polygon points="295.804 21.527 295.804 35.867 288.582 35.867 288.582 86.091 281.378 86.091 281.378 129.128 288.582 129.128 288.582 164.995 281.378 164.995 281.378 193.692 288.582 193.692 288.582 208.032 281.378 208.032 281.378 229.559 274.157 229.559 274.157 243.899 266.935 243.899 266.935 251.086 259.731 251.086 259.731 258.256 252.509 258.256 252.509 265.426 245.288 265.426 245.288 272.596 230.862 272.596 230.862 286.953 223.658 286.953 223.658 294.123 187.585 294.123 187.585 301.293 173.143 301.293 173.143 308.463 151.513 308.463 151.513 315.65 122.644 315.65 122.644 322.82 93.793 322.82 93.793 315.65 86.571 315.65 86.571 294.123 100.997 294.123 100.997 286.953 57.72 286.953 57.72 294.123 7.204 294.123 7.204 286.953 0 286.953 0 265.426 28.851 265.426 28.851 258.256 36.073 258.256 36.073 243.899 43.277 243.899 43.277 236.729 50.499 236.729 50.499 229.559 64.924 229.559 64.924 222.389 72.146 222.389 72.146 215.219 79.35 215.219 79.35 208.032 86.571 208.032 86.571 200.862 93.793 200.862 93.793 193.692 100.997 193.692 100.997 179.335 108.218 179.335 108.218 172.165 115.44 172.165 115.44 164.995 122.644 164.995 122.644 150.655 129.865 150.655 129.865 143.468 137.07 143.468 137.07 129.128 151.513 129.128 151.513 121.958 158.717 121.958 158.717 114.771 165.938 114.771 165.938 107.601 173.143 107.601 173.143 93.261 180.364 93.261 180.364 78.904 187.585 78.904 187.585 50.224 180.364 50.224 180.364 43.037 173.143 43.037 173.143 21.527 194.79 21.527 194.79 14.34 209.215 14.34 209.215 7.17 223.658 7.17 223.658 0 245.288 0 245.288 7.17 266.935 7.17 266.935 14.34 288.582 14.34 288.582 21.527 295.804 21.527" fill="#e31b23" />
+              </g>
+            </svg>
+            <a class="desktop-link" href="https://github.com/algzl/GIFt-converter/releases" target="_blank" rel="noreferrer">
+              <svg class="github-mark" viewBox="0 0 16 16" aria-hidden="true">
+                <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.55 7.55 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8 8 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
+              </svg>
+              <span>Win app</span>
+            </a>
+          </div>
+        </div>
+      </aside>
+
+      <main class="right-panel">
+        <section id="dropZone" class="workspace-board">
+          <div class="board-topline">
+            <div class="board-actions board-actions-left">
+              <button id="selectAllButton" class="board-select-button" type="button">Select All</button>
+              <button id="clearButton" class="board-clear-button" type="button">Clear Selected</button>
+              <div id="progressCounter" class="progress-counter">0 / 0 completed</div>
+              <div id="jobsMeter" class="summary-box">
+                <span id="jobsMeterLabel" class="summary-box-label">0 jobs</span>
+                <span class="summary-box-fill" aria-hidden="true"></span>
+              </div>
+            </div>
+            <div class="board-actions board-actions-right">
+              <button id="topResumeButton" class="board-stop-button" type="button" disabled>Continue</button>
+              <button id="topStopButton" class="board-stop-button" type="button" disabled>Stop</button>
+            </div>
+          </div>
+
+          <div class="board-scroll">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Select</th>
+                    <th>File</th>
+                    <th>FPS</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Output</th>
+                  </tr>
+                </thead>
+                <tbody id="queueBody">
+                  <tr class="empty-row">
+                    <td colspan="6">Drop videos here or use Start Import.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <section id="logShell" class="log-overlay" aria-live="polite">
+      <div class="log-head">
+        <span class="log-title">Log</span>
+      </div>
+      <div id="logPanel" class="log-body"></div>
+    </section>    <script src="./vendor/ffmpeg/ffmpeg.js"></script>
+    <script src="./vendor/jszip.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
+
+
+
+
+
+
+

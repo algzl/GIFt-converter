@@ -195,9 +195,10 @@ function getLogTone(message) {
   return "default";
 }
 
-function addLog(message) {
+function addLog(message, tone = null) {
   const item = document.createElement("div");
-  item.className = `log-entry log-entry-${getLogTone(message)}`;
+  const resolvedTone = tone || getLogTone(message);
+  item.className = `log-entry log-entry-${resolvedTone}`;
   const timestamp = new Date().toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -685,6 +686,10 @@ function renderQueue() {
 
   elements.queueTableBody.innerHTML = state.jobs
     .map((job) => {
+      const progressPercent =
+        job.status === "done"
+          ? 100
+          : Math.max(0, Math.min(100, Math.round((Number(job.progress) || 0) * 100)));
       const statusLabels = {
         waiting: "Waiting",
         running: "Converting",
@@ -731,9 +736,24 @@ function renderQueue() {
           : job.error
             ? `<span class="file-sub">${escapeHtml(job.error.slice(0, 180))}</span>`
             : '<span class="file-sub">Not ready</span>';
+      const statusClasses = [
+        "status-badge",
+        `status-${job.status}`,
+        job.status === "waiting" && state.running ? "is-pending" : "",
+        job.status === "running" ? "is-active" : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      const rowAction =
+        state.running
+          ? job.status === "running"
+            ? `<button class="row-remove-button" type="button" data-remove-row="${job.id}" aria-label="Abort">x</button>`
+            : ""
+          : `<button class="row-remove-button" type="button" data-remove-row="${job.id}" aria-label="Remove">x</button>`;
 
       return `
-        <tr>
+        <tr class="${job.status === "done" ? "row-done" : ""}">
           <td>
             <label class="row-check">
               <input
@@ -769,15 +789,20 @@ function renderQueue() {
             </label>
           </td>
           <td>
-            <span class="status-badge status-${job.status}">${statusLabels[job.status]}</span>
+            <span class="${statusClasses}">${statusLabels[job.status]}</span>
           </td>
           <td>
-            <div class="progress-shell">
-              <div class="progress-bar" style="width:${Math.round(job.progress * 100)}%"></div>
+            <div class="progress-shell ${job.status === "done" ? "is-complete" : ""}">
+              <div class="progress-bar" style="width:${progressPercent}%"></div>
             </div>
-            <div class="progress-text">${Math.round(job.progress * 100)}%</div>
+            <div class="progress-text ${job.status === "done" ? "is-complete" : ""}">${progressPercent}%</div>
           </td>
-          <td>${outputCell}</td>
+          <td>
+            <div class="output-cell">
+              <div class="output-copy">${outputCell}</div>
+              ${rowAction}
+            </div>
+          </td>
         </tr>
       `;
     })
@@ -1105,87 +1130,16 @@ async function commitOptimizationDrafts() {
 }
 
 async function optimizeZipAndDownload() {
-  const singleCompletedJob = getSingleCompletedJob();
-  if (singleCompletedJob) {
-    state.optimizeZipBusy = true;
-    startOptimizeZipProgress();
-    updateOptimizeZipButton();
-
-    try {
-      state.lastOptimizeQuality = Math.max(
-        10,
-        Math.min(100, Number(elements.optimizePercentInput.value) || state.lastOptimizeQuality || 80)
-      );
-      const drafts = await stageOptimizedGifFiles(
-        [singleCompletedJob.outputPath],
-        state.lastOptimizeQuality
-      );
-      stopOptimizeZipProgress(true);
-      const wantsSave = await askConfirmPrompt({
-        title: "Save",
-        heading: "Save?",
-        copy: ""
-      });
-
-      if (wantsSave && drafts[0]) {
-        const savedPath = await saveGifFileFromPath(
-          drafts[0].tempPath,
-          singleCompletedJob.outputPath.split(/[/\\]/).pop()
-        );
-        if (savedPath) {
-          singleCompletedJob.optimizedOnce = true;
-        }
-      } else {
-        addLog("Optimized GIF save was skipped.");
-      }
-
-      await discardOptimizationDrafts();
-      state.optimizeZipVisible = true;
-      renderQueue();
-      return;
-    } catch (error) {
-      await discardOptimizationDrafts();
-      updateStatus("GIF optimization failed.", "error");
-      updateCompletionHint("Optimization failed. Review the log and try again.");
-      addLog(`Optimization error: ${error.message}`);
-      stopOptimizeZipProgress(false);
-    } finally {
-      state.optimizeZipBusy = false;
-      updateOptimizeZipButton();
-    }
+  const completedJobs = getCompletedGifJobs();
+  if (completedJobs.length === 0) {
+    updateStatus("No GIF files are ready to optimize.", "warn");
     return;
   }
 
-  const pendingFiles = getCompletedGifJobs()
-    .filter((job) => !job.optimizedOnce)
-    .map((job) => job.outputPath);
-
-  if (pendingFiles.length === 0) {
-    await saveZipForCompletedJobs();
-    return;
-  }
-
-  state.optimizeZipBusy = true;
-  startOptimizeZipProgress();
-  updateOptimizeZipButton();
-
-  try {
-    await stageOptimizedGifFiles(pendingFiles, state.lastOptimizeQuality);
-    await commitOptimizationDrafts();
-    stopOptimizeZipProgress(true);
-    state.optimizeZipVisible = false;
-    updateOptimizeZipButton();
-    await saveZipForCompletedJobs();
-  } catch (error) {
-    await discardOptimizationDrafts();
-    updateStatus("GIF optimization failed.", "error");
-    updateCompletionHint("Optimization failed. Review the log and try again.");
-    addLog(`Optimization error: ${error.message}`);
-    stopOptimizeZipProgress(false);
-  } finally {
-    state.optimizeZipBusy = false;
-    updateOptimizeZipButton();
-  }
+  const fileEntries = await window.converterApi.getFileEntries(
+    completedJobs.map((job) => job.outputPath)
+  );
+  await showOptimizePrompt(fileEntries);
 }
 
 async function saveCompletedOutputs() {
@@ -1357,7 +1311,7 @@ async function runConversion(resumeMode) {
   updateOptimizeZipButton();
 
   setRunning(true);
-  updateStatus(resumeMode ? "Export resumed." : "Export started.", "ready");
+  updateStatus(resumeMode ? "Continuing queue..." : "Preparing export...", "warn");
   updateCompletionHint("A dialog will open when the process is complete.");
   addLog(
     resumeMode
@@ -1378,9 +1332,7 @@ async function runConversion(resumeMode) {
   const successCount = results.filter((item) => item.status === "done").length;
   const errorCount = results.filter((item) => item.status === "error").length;
   const cancelledCount = results.filter((item) => item.status === "cancelled").length;
-  const gifFiles = results
-    .filter((item) => item.status === "done" && item.outputPath)
-    .map((item) => item.outputPath);
+  const gifFiles = getCompletedGifJobs().map((job) => job.outputPath);
 
   state.canResume = hasResumableJobs();
   setRunning(false);
@@ -1398,7 +1350,8 @@ async function runConversion(resumeMode) {
     updateCompletionHint("The process is complete. A dialog will open next.");
   }
   addLog(
-    `Export finished. Success: ${successCount}, errors: ${errorCount}, cancelled: ${cancelledCount}.`
+    `Export finished. Success: ${successCount}, errors: ${errorCount}, cancelled: ${cancelledCount}.`,
+    errorCount > 0 || cancelledCount > 0 ? "error" : "success"
   );
 
   if (gifFiles.length > 0) {
@@ -1425,6 +1378,27 @@ async function cancelConversion() {
   addLog("The user requested cancellation.");
 }
 
+function removeQueuedJob(jobId) {
+  const targetIndex = state.jobs.findIndex((job) => job.id === jobId);
+  if (targetIndex === -1) {
+    return;
+  }
+
+  const targetJob = state.jobs[targetIndex];
+  if (state.running && targetJob.status === "running") {
+    cancelConversion();
+    return;
+  }
+
+  if (state.running) {
+    return;
+  }
+
+  state.jobs.splice(targetIndex, 1);
+  renderQueue();
+  updateStatus("Video removed from the queue.", "ready");
+}
+
   elements.startButton.addEventListener("click", addFiles);
   elements.pickOutputButton.addEventListener("click", pickOutputDir);
 elements.goToOutputLink.addEventListener("click", () => {
@@ -1438,10 +1412,19 @@ elements.clearQueueButton.addEventListener("click", () => {
   if (state.running) {
     return;
   }
+  const selectedIds = new Set(
+    state.jobs.filter((job) => job.selected).map((job) => job.id)
+  );
+  if (selectedIds.size === 0) {
+    updateStatus("Select videos first.", "warn");
+    addLog("Select videos first.", "error");
+    return;
+  }
+
   state.canResume = false;
-  state.jobs = [];
+  state.jobs = state.jobs.filter((job) => !selectedIds.has(job.id));
   renderQueue();
-  updateStatus("List cleared.", "ready");
+  updateStatus("Selected videos cleared.", "ready");
 });
 elements.brandLinkButton.addEventListener("click", () => {
   window.converterApi.openExternalUrl("https://ycswu.co");
@@ -1535,6 +1518,13 @@ elements.queueTableBody.addEventListener("change", (event) => {
 });
 
 elements.queueTableBody.addEventListener("click", (event) => {
+  const removeTarget = event.target.closest("[data-remove-row]");
+  if (removeTarget) {
+    event.preventDefault();
+    removeQueuedJob(removeTarget.dataset.removeRow);
+    return;
+  }
+
   const stopTarget = event.target.closest("[data-stop-row]");
   if (stopTarget) {
     event.preventDefault();
@@ -1813,10 +1803,11 @@ window.converterApi.onConversionStarted(({ id, queueIndex, total }) => {
 
 window.converterApi.onConversionProgress(({ id, progress, outputPath }) => {
   const job = state.jobs.find((item) => item.id === id);
-  if (!job) {
+  if (!job || job.status === "done" || job.status === "cancelled" || job.status === "error") {
     return;
   }
-  job.progress = progress;
+  const nextProgress = Math.max(0, Math.min(0.98, Number(progress) || 0));
+  job.progress = Math.max(job.progress || 0, nextProgress);
   job.outputPath = outputPath;
   renderQueue();
 });

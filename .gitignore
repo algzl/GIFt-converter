@@ -11,3 +11,6 @@ release/*.AppImage
 release/*.zip
 release/builder-debug.yml
 release/win-unpacked/
+release/desktop-app/
+release/web-app/
+GIFt-Converter/windows app/
