@@ -6,7 +6,9 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist:win": "electron-builder --win portable"
+    "build:icon": "node scripts/build-icon.js",
+    "dist:win": "npm.cmd run build:icon && electron-builder --win portable",
+    "dist:setup": "npm.cmd run build:icon && electron-builder --win nsis --x64"
   },
   "keywords": [
     "electron",
@@ -23,6 +25,7 @@
       "main.js",
       "preload.js",
       "src/**/*",
+      "assets/**/*",
       "package.json",
       "package-lock.json"
     ],
@@ -31,6 +34,8 @@
     },
     "artifactName": "gift-converter-${version}.${ext}",
     "win": {
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
       "target": [
         {
           "target": "portable",
@@ -39,6 +44,11 @@
           ]
         }
       ]
+    },
+    "nsis": {
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico"
     }
   },
   "dependencies": {
@@ -46,11 +56,14 @@
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "ffmpeg-static": "^5.2.0",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "mime-db": "^1.52.0"
   },
   "devDependencies": {
     "electron": "^37.0.0",
     "electron-builder": "^24.13.3",
-    "electron-packager": "^17.1.2"
+    "electron-packager": "^17.1.2",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5"
   }
 }

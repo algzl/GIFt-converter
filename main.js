@@ -50,6 +50,10 @@ let isQuitting = false;
 
 app.setName("gift-converter");
 
+function getAppIconPath() {
+  return path.join(__dirname, "assets", "icon.ico");
+}
+
 function getFfmpegExecutablePath() {
   if (!ffmpegStaticPath) {
     throw new Error("ffmpeg-static path could not be resolved.");
@@ -125,6 +129,7 @@ function createWindow() {
     minWidth: 1140,
     minHeight: 760,
     backgroundColor: "#f3ede2",
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,

@@ -29,6 +29,9 @@ const { FFmpeg } = window.FFmpegWASM;
 const JSZip = window.JSZip;
 const LOCAL_CORE_URL = new URL("./vendor/core/ffmpeg-core.js", window.location.href).href;
 const LOCAL_WASM_URL = new URL("./vendor/core/ffmpeg-core.wasm", window.location.href).href;
+const IS_FILE_PROTOCOL = window.location.protocol === "file:";
+const FILE_PROTOCOL_MESSAGE =
+  "Open this web app through http://localhost or https://. file:// blocks the browser worker required for conversion.";
 
 const state = {
   jobs: [],
@@ -127,6 +130,11 @@ function addLog(message, tone = "default") {
   });
   item.innerHTML = `<div>${message}</div><div class="log-time">${timestamp}</div>`;
   elements.logPanel.prepend(item);
+}
+
+function isFileProtocolError(error) {
+  const text = String(error?.message || error || "").toLowerCase();
+  return IS_FILE_PROTOCOL && (text.includes("failed to construct 'worker'") || text.includes("origin 'null'"));
 }
 
 function setStatus(text, tone = "ready") {
@@ -314,6 +322,10 @@ function getScaleFilter() {
 }
 
 async function ensureFfmpeg() {
+  if (IS_FILE_PROTOCOL) {
+    throw new Error(FILE_PROTOCOL_MESSAGE);
+  }
+
   if (state.ffmpegLoaded) {
     return state.ffmpeg;
   }
@@ -370,6 +382,10 @@ async function resetFfmpeg() {
 }
 
 function warmBrowserEngine() {
+  if (IS_FILE_PROTOCOL) {
+    return;
+  }
+
   if (state.ffmpegLoaded || state.ffmpegLoadPromise) {
     return;
   }
@@ -519,8 +535,13 @@ async function exportAll(resumeMode = false) {
     );
   } catch (error) {
     console.error(error);
-    setStatus("Browser conversion failed.", "error");
-    addLog(`Conversion error: ${error.message}`, "error");
+    if (isFileProtocolError(error)) {
+      setStatus("Use http://localhost or https:// for conversion.", "warn");
+      addLog(FILE_PROTOCOL_MESSAGE, "error");
+    } else {
+      setStatus("Browser conversion failed.", "error");
+      addLog(`Conversion error: ${error.message}`, "error");
+    }
   } finally {
     state.canResume = hasResumableJobs();
     setRunning(false);
@@ -714,6 +735,10 @@ elements.dropZone.addEventListener("drop", (event) => {
 updateSizeModeUi();
 renderQueue();
 addLog("Web app is ready.");
+if (IS_FILE_PROTOCOL) {
+  addLog("Local file preview mode detected. Conversion requires http://localhost or https://.", "error");
+  setStatus("Local preview mode. Import works; conversion requires http/https.", "warn");
+}
 
 if ("requestIdleCallback" in window) {
   window.requestIdleCallback(() => warmBrowserEngine(), { timeout: 1200 });
