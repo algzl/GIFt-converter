@@ -163,6 +163,21 @@ function setRunning(isRunning) {
   }
 }
 
+function updateProtocolModeUi() {
+  if (!IS_FILE_PROTOCOL) {
+    return;
+  }
+
+  elements.exportButton.disabled = true;
+  elements.zipButton.disabled = true;
+  if (elements.topResumeButton) {
+    elements.topResumeButton.disabled = true;
+  }
+  if (elements.topStopButton) {
+    elements.topStopButton.disabled = true;
+  }
+}
+
 function updateSizeModeUi() {
   const custom = elements.sizeModeSelect.value === "custom";
   elements.primarySizeLabel.textContent = custom ? "Width (px)" : "Long edge (px)";
@@ -487,6 +502,12 @@ async function exportAll(resumeMode = false) {
     return;
   }
 
+  if (IS_FILE_PROTOCOL) {
+    setStatus("Local preview mode. Use http://localhost or https:// for conversion.", "warn");
+    addLog(FILE_PROTOCOL_MESSAGE, "error");
+    return;
+  }
+
   try {
     const jobs = state.jobs.filter((job) => job.selected && (!resumeMode || !job.gifBlob));
     if (jobs.length === 0) {
@@ -736,8 +757,9 @@ updateSizeModeUi();
 renderQueue();
 addLog("Web app is ready.");
 if (IS_FILE_PROTOCOL) {
-  addLog("Local file preview mode detected. Conversion requires http://localhost or https://.", "error");
-  setStatus("Local preview mode. Import works; conversion requires http/https.", "warn");
+  updateProtocolModeUi();
+  addLog("Local file preview mode detected. Conversion is disabled until the app is opened through http://localhost or https://.", "error");
+  setStatus("Local preview mode. Conversion disabled until http/https.", "warn");
 }
 
 if ("requestIdleCallback" in window) {
